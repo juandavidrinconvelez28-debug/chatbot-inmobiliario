@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panel de Control — Chatbot Inmobiliario</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #1e2d45;
+    --accent: #00d4aa;
+    --accent2: #f59e0b;
+    --accent3: #6366f1;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --danger: #ef4444;
+    --success: #10b981;
+    --warn: #f59e0b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── GRID LAYOUT ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    grid-template-rows: 60px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .topbar-logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .topbar-badge {
+    background: linear-gradient(135deg, var(--accent), var(--accent3));
+    color: #000;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+  }
+
+  .topbar-spacer { flex: 1; }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .status-text { font-size: 13px; color: var(--muted); }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+    overflow-y: auto;
+  }
+
+  .sidebar-section {
+    padding: 8px 16px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-top: 16px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    cursor: pointer;
+    border-radius: 0;
+    font-size: 14px;
+    color: var(--muted);
+    transition: all 0.15s;
+    border-left: 3px solid transparent;
+    text-decoration: none;
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active {
+    background: rgba(0, 212, 170, 0.08);
+    color: var(--accent);
+    border-left-color: var(--accent);
+  }
+  .nav-icon { font-size: 16px; }
+
+  /* ── MAIN CONTENT ── */
+  .main {
+    overflow-y: auto;
+    padding: 28px;
+  }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .page-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .page-subtitle { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 16px;
+  }
+
+  /* ── STATS GRID ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent-color, var(--accent));
+  }
+
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--accent-color, var(--accent));
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .stat-label { font-size: 12px; color: var(--muted); }
+  .stat-delta { font-size: 12px; color: var(--success); margin-top: 4px; }
+
+  /* ── TABLE ── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  td {
+    padding: 12px 12px;
+    border-bottom: 1px solid rgba(30, 45, 69, 0.5);
+    vertical-align: middle;
+  }
+  tr:hover td { background: var(--surface2); }
+
+  /* ── BADGES ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-green { background: rgba(16,185,129,0.15); color: var(--success); }
+  .badge-yellow { background: rgba(245,158,11,0.15); color: var(--warn); }
+  .badge-blue { background: rgba(99,102,241,0.15); color: var(--accent3); }
+  .badge-red { background: rgba(239,68,68,0.15); color: var(--danger); }
+  .badge-cyan { background: rgba(0,212,170,0.15); color: var(--accent); }
+
+  /* ── CHAT SIMULATOR ── */
+  .chat-container {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 20px;
+    height: calc(100vh - 200px);
+  }
+
+  .chat-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chat-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .chat-avatar {
+    width: 38px; height: 38px;
+    background: linear-gradient(135deg, var(--accent), var(--accent3));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+
+  .chat-name { font-weight: 600; font-size: 15px; }
+  .chat-status { font-size: 12px; color: var(--success); }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .msg {
+    max-width: 75%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .msg-bot {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    align-self: flex-start;
+    border-bottom-left-radius: 3px;
+  }
+
+  .msg-user {
+    background: var(--accent3);
+    align-self: flex-end;
+    border-bottom-right-radius: 3px;
+    color: #fff;
+  }
+
+  .msg-time {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 4px;
+    text-align: right;
+  }
+
+  .chat-input-row {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+  }
+
+  .chat-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .chat-input:focus { border-color: var(--accent); }
+
+  .btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+
+  .btn-secondary {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-danger { background: var(--danger); color: #fff; }
+
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  /* ── QUICK REPLIES ── */
+  .quick-replies {
+    padding: 8px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .quick-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .quick-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── SESSION PANEL ── */
+  .session-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .session-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  .session-body { padding: 16px; }
+
+  .field-group { margin-bottom: 14px; }
+  .field-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .field-value { font-size: 14px; color: var(--text); font-weight: 500; }
+  .field-empty { color: var(--muted); font-style: italic; font-size: 13px; }
+
+  .score-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .score-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent3));
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+
+  /* ── FORM FIELDS ── */
+  .form-group { margin-bottom: 16px; }
+  .form-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; display: block; }
+  .form-input, .form-textarea, .form-select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-textarea { min-height: 100px; resize: vertical; }
+  .form-input:focus, .form-textarea:focus, .form-select:focus { border-color: var(--accent); }
+  .form-select option { background: var(--surface); }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  /* ── TYPING INDICATOR ── */
+  .typing {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    border-bottom-left-radius: 3px;
+    align-self: flex-start;
+    width: fit-content;
+  }
+  .typing-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    animation: typing 1.2s infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typing {
+    0%, 100% { transform: translateY(0); opacity: 0.4; }
+    50% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* ── FAQ EDITOR ── */
+  .faq-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .faq-item:hover { border-color: var(--accent3); }
+  .faq-q { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+  .faq-a { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+  .scrollbar::-webkit-scrollbar { width: 4px; }
+  .scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .chat-container { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-logo">
+      🏠 ChatBot Inmobiliario
+      <span class="topbar-badge">WhatsApp</span>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="status-dot"></div>
+    <span class="status-text">Bot activo</span>
+  </header>
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar scrollbar">
+    <div class="sidebar-section">Principal</div>
+    <a class="nav-item active" onclick="showPage('dashboard', this)">
+      <span class="nav-icon">📊</span> Dashboard
+    </a>
+    <a class="nav-item" onclick="showPage('simulator', this)">
+      <span class="nav-icon">💬</span> Simulador
+    </a>
+    <a class="nav-item" onclick="showPage('leads', this)">
+      <span class="nav-icon">👥</span> Leads
+    </a>
+
+    <div class="sidebar-section">Configuración</div>
+    <a class="nav-item" onclick="showPage('proyecto', this)">
+      <span class="nav-icon">🏢</span> Proyecto
+    </a>
+    <a class="nav-item" onclick="showPage('precios', this)">
+      <span class="nav-icon">💰</span> Precios
+    </a>
+    <a class="nav-item" onclick="showPage('mensajes', this)">
+      <span class="nav-icon">✉️</span> Mensajes
+    </a>
+    <a class="nav-item" onclick="showPage('faqs', this)">
+      <span class="nav-icon">❓</span> FAQs
+    </a>
+    <a class="nav-item" onclick="showPage('prompt', this)">
+      <span class="nav-icon">🤖</span> Prompt IA
+    </a>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main scrollbar">
+
+    <!-- ── DASHBOARD ── -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-title">Dashboard</div>
+      <div class="page-subtitle">Métricas en tiempo real del chatbot</div>
+
+      <div class="stats-grid">
+        <div class="stat-card" style="--accent-color: #00d4aa">
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-label">Conversaciones totales</div>
+          <div class="stat-delta">↑ 12% este mes</div>
+        </div>
+        <div class="stat-card" style="--accent-color: #6366f1">
+          <div class="stat-value" id="stat-leads">0</div>
+          <div class="stat-label">Leads capturados</div>
+          <div class="stat-delta">↑ 8% esta semana</div>
+        </div>
+        <div class="stat-card" style="--accent-color: #f59e0b">
+          <div class="stat-value" id="stat-visitas">0</div>
+          <div class="stat-label">Visitas agendadas</div>
+          <div class="stat-delta">↑ 3 hoy</div>
+        </div>
+        <div class="stat-card" style="--accent-color: #10b981">
+          <div class="stat-value" id="stat-conv">0%</div>
+          <div class="stat-label">Tasa de conversión</div>
+          <div class="stat-delta">Lead → Visita</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Leads recientes</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Teléfono</th>
+                <th>Presupuesto</th>
+                <th>Tipo</th>
+                <th>Estado</th>
+                <th>Score</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+            <tbody id="leads-table-body">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Distribución de consultas por opción</div>
+        <div id="consultas-chart" style="display:flex; gap:12px; flex-wrap:wrap; padding:8px 0;"></div>
+      </div>
+    </div>
+
+    <!-- ── SIMULADOR ── -->
+    <div class="page" id="page-simulator">
+      <div class="page-title">Simulador de Conversación</div>
+      <div class="page-subtitle">Prueba el chatbot como si fueras un usuario de WhatsApp</div>
+
+      <div class="chat-container">
+        <div class="chat-box">
+          <div class="chat-header">
+            <div class="chat-avatar">🏠</div>
+            <div>
+              <div class="chat-name">Asistente Inmobiliario</div>
+              <div class="chat-status">● En línea</div>
+            </div>
+            <div style="margin-left:auto; display:flex; gap:8px;">
+              <button class="btn btn-secondary btn-sm" onclick="resetChat()">🔄 Reiniciar</button>
+            </div>
+          </div>
+
+          <div class="quick-replies" id="quick-replies">
+            <button class="quick-btn" onclick="sendQuick('hola')">hola</button>
+            <button class="quick-btn" onclick="sendQuick('1')">1 - Proyecto</button>
+            <button class="quick-btn" onclick="sendQuick('2')">2 - Ubicación</button>
+            <button class="quick-btn" onclick="sendQuick('3')">3 - Precios</button>
+            <button class="quick-btn" onclick="sendQuick('4')">4 - Formas de pago</button>
+            <button class="quick-btn" onclick="sendQuick('5')">5 - Agendar visita</button>
+            <button class="quick-btn" onclick="sendQuick('6')">6 - Asesor</button>
+            <button class="quick-btn" onclick="sendQuick('7')">7 - Brochure</button>
+          </div>
+
+          <div class="chat-messages scrollbar" id="chat-messages"></div>
+
+          <div class="chat-input-row">
+            <input class="chat-input" id="chat-input" placeholder="Escribe un mensaje..." onkeydown="handleKey(event)">
+            <button class="btn btn-primary" onclick="sendMessage()">Enviar</button>
+          </div>
+        </div>
+
+        <div class="session-panel">
+          <div class="session-header">📋 Estado de la sesión</div>
+          <div class="session-body">
+            <div class="field-group">
+              <div class="field-label">Estado actual</div>
+              <div class="field-value" id="sess-estado">inicio</div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Nombre</div>
+              <div id="sess-nombre" class="field-empty">— sin capturar —</div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Teléfono</div>
+              <div id="sess-telefono" class="field-empty">— sin capturar —</div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Ciudad</div>
+              <div id="sess-ciudad" class="field-empty">— sin capturar —</div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Presupuesto</div>
+              <div id="sess-presupuesto" class="field-empty">— sin capturar —</div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Tipo de apto</div>
+              <div id="sess-tipo" class="field-empty">— sin capturar —</div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Propósito</div>
+              <div id="sess-proposito" class="field-empty">— sin capturar —</div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Forma de pago</div>
+              <div id="sess-pago" class="field-empty">— sin capturar —</div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Fecha de visita</div>
+              <div id="sess-fecha" class="field-empty">— sin capturar —</div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Puntuación del lead</div>
+              <div class="field-value" id="sess-score">0 / 100</div>
+              <div class="score-bar">
+                <div class="score-fill" id="score-bar" style="width:0%"></div>
+              </div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Etiqueta</div>
+              <div id="sess-etiqueta"><span class="badge badge-blue">🆕 Nuevo Lead</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── LEADS ── -->
+    <div class="page" id="page-leads">
+      <div class="page-title">Gestión de Leads</div>
+      <div class="page-subtitle">Todos los prospectos capturados por el chatbot</div>
+
+      <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" onclick="filterLeads('all')">Todos</button>
+        <button class="btn btn-secondary btn-sm" onclick="filterLeads('alto')">🔥 Alto interés</button>
+        <button class="btn btn-secondary btn-sm" onclick="filterLeads('visita')">📅 Con visita</button>
+        <button class="btn btn-secondary btn-sm" onclick="filterLeads('frio')">❄️ Fríos</button>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Teléfono</th>
+                <th>Ciudad</th>
+                <th>Presupuesto</th>
+                <th>Tipo apto</th>
+                <th>Propósito</th>
+                <th>Visita</th>
+                <th>Score</th>
+                <th>Etiqueta</th>
+              </tr>
+            </thead>
+            <tbody id="leads-full-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PROYECTO ── -->
+    <div class="page" id="page-proyecto">
+      <div class="page-title">Configuración del Proyecto</div>
+      <div class="page-subtitle">Edita los datos del proyecto inmobiliario</div>
+
+      <div class="card">
+        <div class="card-title">Información General</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Nombre del proyecto *</label>
+            <input class="form-input" id="cfg-nombre" placeholder="Ej: Torre Mirador">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Ciudad *</label>
+            <input class="form-input" id="cfg-ciudad" placeholder="Ej: Bogotá, Medellín...">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Ubicación exacta *</label>
+            <input class="form-input" id="cfg-ubicacion" placeholder="Ej: Calle 100 #15-20, Chapinero">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha de entrega</label>
+            <input class="form-input" id="cfg-entrega" placeholder="Ej: Diciembre 2026">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Enlace proyecto digital</label>
+            <input class="form-input" id="cfg-link" placeholder="https://...">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Link Google Maps</label>
+            <input class="form-input" id="cfg-maps" placeholder="https://maps.google.com/...">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Horario de visitas</label>
+            <input class="form-input" id="cfg-horario" placeholder="Lun-Sáb 9am–6pm">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Teléfono asesor</label>
+            <input class="form-input" id="cfg-tel" placeholder="+57 300 000 0000">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descripción del proyecto</label>
+          <textarea class="form-textarea" id="cfg-desc" placeholder="Breve descripción del proyecto..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amenidades (una por línea)</label>
+          <textarea class="form-textarea" id="cfg-amenidades" placeholder="Piscina&#10;Gimnasio&#10;Salón social..."></textarea>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:8px;">
+          <button class="btn btn-primary" onclick="saveProyecto()">💾 Guardar cambios</button>
+          <button class="btn btn-secondary" onclick="loadDefaults()">↺ Cargar valores demo</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── MENSAJES ── -->
+    <div class="page" id="page-mensajes">
+      <div class="page-title">Mensajes del Bot</div>
+      <div class="page-subtitle">Edita los mensajes predefinidos del chatbot</div>
+
+      <div class="card">
+        <div class="card-title">Seleccionar mensaje</div>
+        <div class="form-group">
+          <select class="form-select" id="msg-selector" onchange="loadMessage()">
+            <option value="bienvenida">Bienvenida</option>
+            <option value="menu">Menú principal</option>
+            <option value="ubicacion">Ubicación</option>
+            <option value="formas_pago">Formas de pago</option>
+            <option value="brochure">Brochure / Enlace</option>
+            <option value="agendamiento">Inicio agendamiento</option>
+            <option value="confirmacion">Confirmación de visita</option>
+            <option value="transferencia">Transferencia a asesor</option>
+            <option value="seguimiento1">Seguimiento 1 (24h)</option>
+            <option value="seguimiento2">Seguimiento 2 (3 días)</option>
+            <option value="reactivacion">Reactivación (7 días)</option>
+            <option value="despedida">Despedida</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contenido del mensaje</label>
+          <textarea class="form-textarea" id="msg-content" style="min-height:160px; font-family: monospace; font-size:13px;"></textarea>
+        </div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">
+          Variables disponibles: <code style="color:var(--accent)">{{nombre}}</code> <code style="color:var(--accent)">{{proyecto}}</code> <code style="color:var(--accent)">{{telefono}}</code> <code style="color:var(--accent)">{{fechaVisita}}</code> <code style="color:var(--accent)">{{ubicacion}}</code>
+        </div>
+        <button class="btn btn-primary" onclick="saveMessage()">💾 Guardar mensaje</button>
+      </div>
+    </div>
+
+    <!-- ── FAQs ── -->
+    <div class="page" id="page-faqs">
+      <div class="page-title">Preguntas Frecuentes</div>
+      <div class="page-subtitle">Gestiona las respuestas automáticas del chatbot</div>
+
+      <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
+        <button class="btn btn-primary btn-sm" onclick="addFaq()">+ Agregar FAQ</button>
+      </div>
+
+      <div id="faqs-list"></div>
+    </div>
+
+    <!-- ── PROMPT IA ── -->
+    <div class="page" id="page-prompt">
+      <div class="page-title">Prompt del Asistente IA</div>
+      <div class="page-subtitle">Define el comportamiento del motor de inteligencia artificial</div>
+
+      <div class="card">
+        <div class="card-title">Prompt del sistema</div>
+        <textarea class="form-textarea" id="prompt-content" style="min-height:400px; font-family: monospace; font-size:12px; line-height:1.6;">Eres un asesor virtual de bienes raíces profesional y amigable del proyecto [NOMBRE DEL PROYECTO] en [CIUDAD].
+
+Tu nombre es Valeria y representas al equipo comercial del proyecto.
+
+OBJETIVO: Convertir cada conversación en una visita agendada o una oportunidad de venta calificada.
+
+TONO: Profesional, cercano, comercial y confiable. Mensajes cortos (máx 200 palabras). Emojis moderados.
+
+REGLAS:
+- Siempre termina con una propuesta de acción concreta
+- No inventes precios ni datos no definidos
+- Si no entiendes 3 mensajes seguidos, transfiere al asesor humano
+- No presiones al usuario
+- No respondas temas fuera del proyecto inmobiliario
+
+INFORMACIÓN DEL PROYECTO:
+[Completar con los datos reales del proyecto]
+
+FORMAS DE PAGO:
+[Completar con las formas de pago]
+
+PRECIOS:
+[Completar con los precios actuales]
+
+AMENIDADES:
+[Completar con las amenidades del proyecto]
+
+CONTACTO DEL ASESOR:
+[Completar con los datos del equipo comercial]</textarea>
+        <div style="margin-top:12px; display:flex; gap:10px;">
+          <button class="btn btn-primary" onclick="savePrompt()">💾 Guardar prompt</button>
+          <button class="btn btn-secondary" onclick="copyPrompt()">📋 Copiar</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ── ESTADO DE LA DEMO ──────────────────────────────────────────
+const DEMO_LEADS = [
+  { nombre:"María García", telefono:"3001234567", ciudad:"Bogotá", presupuesto:"$200M–$350M", tipo:"2 Hab", proposito:"Vivienda", visita:"Sáb 10-May 10am", score:90, etiqueta:"📅 Visita Agendada" },
+  { nombre:"Carlos Pérez", telefono:"3109876543", ciudad:"Medellín", presupuesto:"$350M–$500M", tipo:"3 Hab", proposito:"Inversión", visita:"—", score:65, etiqueta:"⭐ Calificado" },
+  { nombre:"Ana López", telefono:"3207891234", ciudad:"Cali", presupuesto:"Hasta $200M", tipo:"Estudio", proposito:"Vivienda", visita:"—", score:30, etiqueta:"🔥 Interesado" },
+  { nombre:"Rodrigo Sánchez", telefono:"3154567890", ciudad:"Bogotá", presupuesto:"Más de $500M", tipo:"Penthouse", proposito:"Ambos", visita:"Dom 11-May 3pm", score:95, etiqueta:"📅 Visita Agendada" },
+  { nombre:"Luisa Torres", telefono:"3003214567", ciudad:"Bucaramanga", presupuesto:"$200M–$350M", tipo:"2 Hab", proposito:"Inversión", visita:"—", score:15, etiqueta:"❄️ Frío" },
+];
+
+// ── CHAT STATE ─────────────────────────────────────────────────
+let sesion = {
+  estado: "inicio",
+  etapa_captura: null,
+  datos: { nombre:null, telefono:null, ciudad:null, presupuesto:null, tipoApto:null, propositoCompra:null, formaPagoPreferida:null, fechaVisita:null },
+  intentos: 0,
+  score: 0,
+  etiqueta: "🆕 Nuevo Lead"
+};
+
+const RESPUESTAS = {
+  saludo: `🏠 *¡Bienvenido a NOMBRE DEL PROYECTO!*\n\nHola, soy Valeria, tu asesora virtual. Estoy aquí para ayudarte a encontrar tu apartamento ideal en CIUDAD. 🌟\n\n📋 *MENÚ PRINCIPAL*\n\n1️⃣  Ver el proyecto\n2️⃣  📍 Ubicación\n3️⃣  💰 Precios y disponibilidad\n4️⃣  💳 Formas de pago\n5️⃣  📅 Agendar visita\n6️⃣  🙋 Hablar con un asesor\n7️⃣  📄 Ver brochure\n8️⃣  ❓ Preguntas frecuentes\n\n_Escribe el número de tu opción._`,
+  
+  proyecto: `🏢 *NOMBRE DEL PROYECTO*\n\nModerno proyecto residencial en el corazón de la ciudad, diseñado para quienes buscan calidad de vida e inversión inteligente.\n\n📍 *Ubicación:* UBICACIÓN, CIUDAD\n🗓️ *Entrega:* Diciembre 2026\n\n✨ *Amenidades:*\n  • Piscina adultos y niños\n  • Gimnasio equipado\n  • Salón social\n  • Zona BBQ\n  • Parque infantil\n  • Coworking\n  • Portería 24/7\n\n¿Te gustaría ver los precios? Escribe *3* o agenda tu visita con *5* 📅`,
+  
+  ubicacion: `📍 *UBICACIÓN DEL PROYECTO*\n\nEstamos en UBICACIÓN, CIUDAD. Una zona privilegiada con:\n  • Acceso fácil a vías principales\n  • Centros comerciales cercanos\n  • Colegios y universidades\n  • Transporte público\n\n🔗 Ver en Google Maps: https://maps.google.com\n\n¿Quieres agendar una visita para conocerlo? Escribe *5* 📅`,
+  
+  precios: `💰 *PRECIOS Y DISPONIBILIDAD*\n\n*Estudio* (38 m²)\n  💰 $180.000.000 | 🛏️ 1 hab | ✅ 5 disponibles\n\n*2 Habitaciones* (58 m²)\n  💰 $280.000.000 | 🛏️ 2 hab | ✅ 8 disponibles\n\n*3 Habitaciones* (78 m²)\n  💰 $380.000.000 | 🛏️ 3 hab | ✅ 4 disponibles\n\n*Penthouse* (110 m²)\n  💰 $580.000.000 | 🛏️ 3 hab | ✅ 2 disponibles\n\n⚠️ _Disponibilidad limitada._\n\n¿Te interesa alguna tipología? Escribe *4* para formas de pago o *5* para agendar visita. 🔑`,
+  
+  formas_pago: `💳 *FORMAS DE PAGO*\n\n*1. Cuota Inicial (30%)*\n30% durante construcción en cuotas mensuales diferidas.\n\n*2. Crédito Hipotecario*\nBancolombia, Davivienda, BBVA.\n  • Plazo: Hasta 30 años\n  • Tasa: Desde 10.9% E.A.\n\n*3. Pago de Contado*\nDescuento especial del 3% 🎉\n\n*4. Subsidio de Vivienda*\nAplica para Mi Casa Ya y Cajas de Compensación.\n\n¿Quieres que un asesor te oriente? Escribe *6* 😊`,
+  
+  brochure: `📄 *PROYECTO DIGITAL Y BROCHURE*\n\n🏠 *Recorrido Virtual 360°:*\nhttps://link-del-proyecto.com\n\n📋 *Brochure Completo:*\nhttps://link-brochure.com\n\nEncontrarás: planos, renders, especificaciones técnicas y más.\n\n¿Tienes alguna pregunta después de verlo? Estoy aquí. 💬`,
+  
+  asesor: `👤 *CONECTANDO CON ASESOR*\n\nEn un momento uno de nuestros asesores estará contigo.\n\n📞 *WhatsApp:* +57 300 000 0000\n📧 *Email:* ventas@proyecto.com\n\n_Tiempo de espera: menos de 5 minutos en horario laboral._`,
+  
+  noEntendido: `😊 No entendí bien tu mensaje. Escribe el número de la opción que te interesa o hazme tu pregunta directamente.\n\nEscribe *menú* para ver todas las opciones.`
+};
+
+const CAPTURA_PASOS = {
+  nombre: `📅 *AGENDAR VISITA*\n\n¡Perfecto! Visítanos y conoce el proyecto en persona. 🏠✨\n\n🕐 *Horario:* Lunes a Sábado 9am–6pm\n\n¿Me dices tu nombre completo? 😊`,
+  telefono: (n) => `Perfecto, *${n}*! 😊\n\n¿Cuál es tu número de teléfono o WhatsApp?`,
+  ciudad: `¿Desde qué ciudad nos contactas?`,
+  presupuesto: `💰 ¿Cuál es tu presupuesto aproximado?\n\n1️⃣  Hasta $200 millones\n2️⃣  $200M – $350M\n3️⃣  $350M – $500M\n4️⃣  Más de $500 millones`,
+  tipoApto: `¿Qué tipo de apartamento te interesa?\n\n1️⃣  Estudio (38 m²)\n2️⃣  2 Habitaciones (58 m²)\n3️⃣  3 Habitaciones (78 m²)\n4️⃣  Penthouse (110 m²)\n5️⃣  No he decidido`,
+  proposito: `¿Para qué lo vas a usar?\n\n1️⃣  🏠 Para vivir\n2️⃣  💼 Inversión / arriendo\n3️⃣  Ambos`,
+  formaPago: `¿Cómo piensas financiar la compra?\n\n1️⃣  Crédito hipotecario\n2️⃣  Cuota inicial + crédito\n3️⃣  Contado\n4️⃣  Subsidio\n5️⃣  Aún no sé`,
+  fechaVisita: `📅 ¿Qué día te queda mejor?\n\nRecuerda: Lunes a Sábado 9am–6pm`,
+};
+
+function detectar(txt) {
+  const t = txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+  if (/^(hola|buenos?|buenas?|buen dia)/.test(t) || t === "") return "SALUDO";
+  if (t === "1" || t.includes("proyecto")) return "PROYECTO";
+  if (t === "2" || t.includes("ubicaci")) return "UBICACION";
+  if (t === "3" || t.includes("precio") || t.includes("costo") || t.includes("valor")) return "PRECIOS";
+  if (t === "4" || t.includes("pago") || t.includes("credito") || t.includes("financiaci")) return "FORMAS_PAGO";
+  if (t === "5" || t.includes("agendar") || t.includes("visita") || t.includes("cita")) return "AGENDAR";
+  if (t === "6" || t.includes("asesor") || t.includes("humano") || t.includes("persona")) return "ASESOR";
+  if (t === "7" || t.includes("brochure") || t.includes("catalogo") || t.includes("link")) return "BROCHURE";
+  if (t.includes("menu") || t.includes("inicio") || t.includes("opciones")) return "MENU";
+  if (t.includes("adios") || t.includes("hasta") || t.includes("chao") || t.includes("bye")) return "DESPEDIDA";
+  return null;
+}
+
+function calcularScore() {
+  const d = sesion.datos;
+  let p = 0;
+  if (d.nombre) p += 10;
+  if (d.telefono) p += 20;
+  if (d.ciudad) p += 5;
+  if (d.presupuesto) p += 15;
+  if (d.tipoApto) p += 10;
+  if (d.propositoCompra) p += 10;
+  if (d.formaPagoPreferida) p += 10;
+  if (d.fechaVisita) p += 25;
+  return p;
+}
+
+function getEtiqueta(score) {
+  if (sesion.datos.fechaVisita) return "📅 Visita Agendada";
+  if (score >= 70) return "⭐ Calificado";
+  if (score >= 40) return "🔥 Interesado";
+  if (score >= 10) return "🔥 Interesado";
+  return "🆕 Nuevo Lead";
+}
+
+function updateSession() {
+  const score = calcularScore();
+  sesion.score = score;
+  sesion.etiqueta = getEtiqueta(score);
+
+  const val = (id, v) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (v) { el.textContent = v; el.className = "field-value"; }
+    else { el.textContent = "— sin capturar —"; el.className = "field-empty"; }
+  };
+
+  document.getElementById("sess-estado").textContent = sesion.estado;
+  val("sess-nombre", sesion.datos.nombre);
+  val("sess-telefono", sesion.datos.telefono);
+  val("sess-ciudad", sesion.datos.ciudad);
+  val("sess-presupuesto", sesion.datos.presupuesto);
+  val("sess-tipo", sesion.datos.tipoApto);
+  val("sess-proposito", sesion.datos.propositoCompra);
+  val("sess-pago", sesion.datos.formaPagoPreferida);
+  val("sess-fecha", sesion.datos.fechaVisita);
+  document.getElementById("sess-score").textContent = `${score} / 100`;
+  document.getElementById("score-bar").style.width = `${score}%`;
+  
+  const eb = { "📅 Visita Agendada":"badge-green","⭐ Calificado":"badge-cyan","🔥 Interesado":"badge-yellow","🆕 Nuevo Lead":"badge-blue","❄️ Frío":"badge-red" };
+  const cls = eb[sesion.etiqueta] || "badge-blue";
+  document.getElementById("sess-etiqueta").innerHTML = `<span class="badge ${cls}">${sesion.etiqueta}</span>`;
+}
+
+function procesarCaptura(texto) {
+  const etapa = sesion.etapa_captura;
+  const t = texto.trim();
+
+  if (etapa === "nombre") {
+    if (t.length < 3) return "Por favor escribe tu nombre completo. 😊";
+    sesion.datos.nombre = t;
+    sesion.etapa_captura = "telefono";
+    return CAPTURA_PASOS.telefono(t);
+  }
+  if (etapa === "telefono") {
+    if (!/^[\+\d]{7,15}$/.test(t.replace(/\s/g,""))) return "Por favor escribe un número de teléfono válido (ej: 3001234567). 📞";
+    sesion.datos.telefono = t;
+    sesion.etapa_captura = "ciudad";
+    return CAPTURA_PASOS.ciudad;
+  }
+  if (etapa === "ciudad") {
+    sesion.datos.ciudad = t;
+    sesion.etapa_captura = "presupuesto";
+    return CAPTURA_PASOS.presupuesto;
+  }
+  if (etapa === "presupuesto") {
+    const ops = {"1":"Hasta $200M","2":"$200M–$350M","3":"$350M–$500M","4":"Más de $500M"};
+    sesion.datos.presupuesto = ops[t] || t;
+    sesion.etapa_captura = "tipoApto";
+    return CAPTURA_PASOS.tipoApto;
+  }
+  if (etapa === "tipoApto") {
+    const ops = {"1":"Estudio","2":"2 Habitaciones","3":"3 Habitaciones","4":"Penthouse","5":"Por definir"};
+    sesion.datos.tipoApto = ops[t] || t;
+    sesion.etapa_captura = "proposito";
+    return CAPTURA_PASOS.proposito;
+  }
+  if (etapa === "proposito") {
+    const ops = {"1":"Vivienda","2":"Inversión","3":"Ambos"};
+    sesion.datos.propositoCompra = ops[t] || t;
+    sesion.etapa_captura = "formaPago";
+    return CAPTURA_PASOS.formaPago;
+  }
+  if (etapa === "formaPago") {
+    const ops = {"1":"Crédito","2":"Cuota + Crédito","3":"Contado","4":"Subsidio","5":"Por definir"};
+    sesion.datos.formaPagoPreferida = ops[t] || t;
+    sesion.etapa_captura = "fechaVisita";
+    return CAPTURA_PASOS.fechaVisita;
+  }
+  if (etapa === "fechaVisita") {
+    sesion.datos.fechaVisita = t;
+    sesion.etapa_captura = null;
+    sesion.estado = "visita_confirmada";
+    return `✅ *¡VISITA CONFIRMADA!*\n\n*${sesion.datos.nombre}*, quedaste agendado/a:\n\n📅 Fecha: *${t}*\n📍 Dirección: UBICACIÓN, CIUDAD\n📞 Asesor: Equipo Comercial\n\n¡Te esperamos con mucho gusto! 🏠✨\n\n_Un asesor te contactará para confirmar._`;
+  }
+  return RESPUESTAS.noEntendido;
+}
+
+function botResponde(texto) {
+  if (sesion.estado === "captura") {
+    return procesarCaptura(texto);
+  }
+
+  const intencion = detectar(texto);
+
+  if (intencion === "SALUDO" || sesion.estado === "inicio") {
+    sesion.estado = "menu";
+    return RESPUESTAS.saludo;
+  }
+  if (intencion === "MENU") return RESPUESTAS.saludo;
+  if (intencion === "PROYECTO") { sesion.estado = "proyecto"; return RESPUESTAS.proyecto; }
+  if (intencion === "UBICACION") { sesion.estado = "ubicacion"; return RESPUESTAS.ubicacion; }
+  if (intencion === "PRECIOS") { sesion.estado = "precios"; return RESPUESTAS.precios; }
+  if (intencion === "FORMAS_PAGO") { sesion.estado = "pago"; return RESPUESTAS.formas_pago; }
+  if (intencion === "BROCHURE") { sesion.estado = "brochure"; return RESPUESTAS.brochure; }
+  if (intencion === "ASESOR") { sesion.estado = "asesor"; return RESPUESTAS.asesor; }
+  if (intencion === "AGENDAR") {
+    sesion.estado = "captura";
+    sesion.etapa_captura = "nombre";
+    return CAPTURA_PASOS.nombre;
+  }
+  if (intencion === "DESPEDIDA") {
+    return `¡Hasta pronto, *${sesion.datos.nombre || ""}*! 👋\n\nFue un placer atenderte. Recuerda que estamos disponibles para cualquier consulta. ¡Que tengas un excelente día! 🌟`;
+  }
+
+  sesion.intentos++;
+  if (sesion.intentos >= 3) {
+    sesion.intentos = 0;
+    sesion.estado = "asesor";
+    return `Veo que tienes una consulta específica. Te conectaré con uno de nuestros asesores que podrá ayudarte mejor. 😊\n\n${RESPUESTAS.asesor}`;
+  }
+  return RESPUESTAS.noEntendido;
+}
+
+function addMessage(texto, tipo) {
+  const cont = document.getElementById("chat-messages");
+  const wrap = document.createElement("div");
+
+  const msg = document.createElement("div");
+  msg.className = `msg msg-${tipo}`;
+  msg.textContent = texto.replace(/\*/g,'').replace(/_([^_]+)_/g,'$1');
+
+  const time = document.createElement("div");
+  time.className = "msg-time";
+  time.textContent = new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+
+  wrap.appendChild(msg);
+  wrap.appendChild(time);
+  cont.appendChild(wrap);
+  cont.scrollTop = cont.scrollHeight;
+}
+
+function showTyping() {
+  const cont = document.getElementById("chat-messages");
+  const div = document.createElement("div");
+  div.id = "typing-indicator";
+  div.className = "typing";
+  div.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+  cont.appendChild(div);
+  cont.scrollTop = cont.scrollHeight;
+}
+
+function hideTyping() {
+  const el = document.getElementById("typing-indicator");
+  if (el) el.remove();
+}
+
+function sendMessage() {
+  const input = document.getElementById("chat-input");
+  const texto = input.value.trim();
+  if (!texto) return;
+
+  addMessage(texto, "user");
+  input.value = "";
+
+  showTyping();
+  const delay = 600 + Math.random() * 800;
+
+  setTimeout(() => {
+    hideTyping();
+    const respuesta = botResponde(texto);
+    addMessage(respuesta, "bot");
+    updateSession();
+  }, delay);
+}
+
+function sendQuick(t) {
+  document.getElementById("chat-input").value = t;
+  sendMessage();
+}
+
+function handleKey(e) {
+  if (e.key === "Enter" && !e.shiftKey) sendMessage();
+}
+
+function resetChat() {
+  sesion = { estado:"inicio", etapa_captura:null, datos:{nombre:null,telefono:null,ciudad:null,presupuesto:null,tipoApto:null,propositoCompra:null,formaPagoPreferida:null,fechaVisita:null}, intentos:0, score:0, etiqueta:"🆕 Nuevo Lead" };
+  document.getElementById("chat-messages").innerHTML = "";
+  updateSession();
+}
+
+// ── PÁGINAS ──────────────────────────────────────────────────────
+function showPage(page, el = null) {
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+
+  const targetPage = document.getElementById(`page-${page}`);
+  if (!targetPage) {
+    console.error(`No existe la sección page-${page}`);
+    return;
+  }
+
+  targetPage.classList.add("active");
+
+  if (el) {
+    el.classList.add("active");
+  }
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────────
+function initDashboard() {
+  document.getElementById("stat-total").textContent = "148";
+  document.getElementById("stat-leads").textContent = "87";
+  document.getElementById("stat-visitas").textContent = "34";
+  document.getElementById("stat-conv").textContent = "39%";
+
+  const tbody = document.getElementById("leads-table-body");
+  const badges = { "📅 Visita Agendada":"badge-green","⭐ Calificado":"badge-cyan","🔥 Interesado":"badge-yellow","❄️ Frío":"badge-red" };
+  DEMO_LEADS.slice(0,5).forEach(l => {
+    const cls = badges[l.etiqueta] || "badge-blue";
+    tbody.innerHTML += `<tr>
+      <td><strong>${l.nombre}</strong></td>
+      <td>${l.telefono}</td>
+      <td>${l.presupuesto}</td>
+      <td>${l.tipo}</td>
+      <td><span class="badge ${cls}">${l.etiqueta}</span></td>
+      <td>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <div style="width:40px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+            <div style="width:${l.score}%;height:100%;background:var(--accent);"></div>
+          </div>
+          <span style="font-size:12px;">${l.score}</span>
+        </div>
+      </td>
+      <td style="color:var(--muted);font-size:12px;">Hoy</td>
+    </tr>`;
+  });
+
+  const opts = [
+    { label:"Ver proyecto", count:42, color:"#00d4aa" },
+    { label:"Precios", count:38, color:"#6366f1" },
+    { label:"Formas de pago", count:27, color:"#f59e0b" },
+    { label:"Agendar visita", count:34, color:"#10b981" },
+    { label:"Ubicación", count:19, color:"#ec4899" },
+    { label:"Asesor", count:12, color:"#ef4444" },
+  ];
+  const chartEl = document.getElementById("consultas-chart");
+  const max = Math.max(...opts.map(o => o.count));
+  opts.forEach(o => {
+    chartEl.innerHTML += `<div style="text-align:center; flex:1; min-width:80px;">
+      <div style="display:flex; align-items:flex-end; justify-content:center; height:60px; margin-bottom:6px;">
+        <div style="width:32px; height:${(o.count/max)*60}px; background:${o.color}; border-radius:4px 4px 0 0; opacity:0.8;"></div>
+      </div>
+      <div style="font-size:12px; color:var(--muted);">${o.label}</div>
+      <div style="font-size:14px; font-weight:700; color:${o.color};">${o.count}</div>
+    </div>`;
+  });
+}
+
+// ── LEADS TABLE ───────────────────────────────────────────────────
+function initLeadsTable() {
+  const tbody = document.getElementById("leads-full-table");
+  const badges = { "📅 Visita Agendada":"badge-green","⭐ Calificado":"badge-cyan","🔥 Interesado":"badge-yellow","❄️ Frío":"badge-red" };
+  DEMO_LEADS.forEach(l => {
+    const cls = badges[l.etiqueta] || "badge-blue";
+    tbody.innerHTML += `<tr>
+      <td><strong>${l.nombre}</strong></td>
+      <td>${l.telefono}</td>
+      <td>${l.ciudad}</td>
+      <td>${l.presupuesto}</td>
+      <td>${l.tipo}</td>
+      <td>${l.proposito}</td>
+      <td style="color:${l.visita!=="—"?"var(--success)":"var(--muted)"};">${l.visita}</td>
+      <td>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <div style="width:50px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+            <div style="width:${l.score}%;height:100%;background:var(--accent);"></div>
+          </div>
+          <span style="font-size:12px;">${l.score}</span>
+        </div>
+      </td>
+      <td><span class="badge ${cls}">${l.etiqueta}</span></td>
+    </tr>`;
+  });
+}
+
+function filterLeads(tipo) {
+  // Demo: en producción filtrar la tabla
+  alert(`Filtro "${tipo}" aplicado. Conecta con tu base de datos para filtros reales.`);
+}
+
+// ── FAQs ──────────────────────────────────────────────────────────
+const FAQS_DEMO = [
+  { q:"¿Dónde está ubicado el proyecto?", a:"El proyecto está en UBICACIÓN, una zona estratégica con acceso a vías principales, centros comerciales y transporte público." },
+  { q:"¿Cuáles son los precios?", a:"Los precios van desde $180M (estudios) hasta $580M (penthouses). Todos incluyen parqueadero." },
+  { q:"¿Cuánto es la cuota inicial?", a:"La cuota inicial es del 30%, diferida en cuotas mensuales durante la construcción." },
+  { q:"¿Con qué bancos puedo financiar?", a:"Trabajamos con Bancolombia, Davivienda y BBVA. Hasta 30 años, tasa desde 10.9% E.A." },
+  { q:"¿Cuándo es la entrega?", a:"La entrega estimada es en Diciembre 2026." },
+];
+
+function initFaqs() {
+  const cont = document.getElementById("faqs-list");
+  cont.innerHTML = "";
+  FAQS_DEMO.forEach((f, i) => {
+    cont.innerHTML += `<div class="faq-item" onclick="editFaq(${i})">
+      <div class="faq-q">❓ ${f.q}</div>
+      <div class="faq-a">${f.a}</div>
+    </div>`;
+  });
+}
+
+function editFaq(i) {
+  const f = FAQS_DEMO[i];
+  const nq = prompt("Pregunta:", f.q);
+  if (!nq) return;
+  const na = prompt("Respuesta:", f.a);
+  if (!na) return;
+  FAQS_DEMO[i] = { q: nq, a: na };
+  initFaqs();
+}
+
+function addFaq() {
+  const q = prompt("Nueva pregunta:");
+  if (!q) return;
+  const a = prompt("Respuesta:");
+  if (!a) return;
+  FAQS_DEMO.push({ q, a });
+  initFaqs();
+}
+
+// ── MENSAJES ──────────────────────────────────────────────────────
+const MSGS_DEMO = {
+  bienvenida: `🏠 *¡Bienvenido a {{proyecto}}!*\n\nHola, soy Valeria, tu asesora virtual. Estoy aquí para ayudarte a encontrar tu apartamento ideal en {{ciudad}}. 🌟\n\n¿En qué puedo ayudarte hoy?`,
+  menu: `📋 *MENÚ PRINCIPAL*\n\n1️⃣  Ver el proyecto\n2️⃣  📍 Ubicación\n3️⃣  💰 Precios y disponibilidad\n4️⃣  💳 Formas de pago\n5️⃣  📅 Agendar visita\n6️⃣  🙋 Hablar con un asesor\n7️⃣  📄 Ver brochure\n8️⃣  ❓ Preguntas frecuentes`,
+  ubicacion: `📍 *UBICACIÓN*\n\nEstamos en {{ubicacion}}.\n\n🔗 Ver en mapa: {{linkMaps}}\n\n¿Quieres agendar una visita? Escribe *5* 📅`,
+  formas_pago: `💳 *FORMAS DE PAGO*\n\n*Cuota inicial:* 30% durante construcción\n*Crédito hipotecario:* Hasta 30 años desde 10.9%\n*Contado:* Descuento 3%\n*Subsidios:* Mi Casa Ya aplica`,
+  brochure: `📄 *PROYECTO DIGITAL*\n\n🏠 Recorrido virtual: {{linkProyecto}}\n📋 Brochure: {{linkBrochure}}`,
+  agendamiento: `📅 *AGENDAR VISITA*\n\n¡Perfecto! ¿Me dices tu nombre completo? 😊`,
+  confirmacion: `✅ *¡VISITA CONFIRMADA!*\n\n*{{nombre}}*, quedaste agendado/a para:\n📅 {{fechaVisita}}\n📍 {{ubicacion}}\n\n¡Te esperamos! 🏠`,
+  transferencia: `👤 *CONECTANDO CON ASESOR*\n\n{{nombre}}, en un momento un asesor estará contigo.\n📞 {{telefono}}`,
+  seguimiento1: `👋 Hola *{{nombre}}*! Vi que estuviste preguntando sobre nuestros apartamentos. ¿Pudiste ver la información? 😊`,
+  seguimiento2: `🏠 Hola *{{nombre}}*! Quería contarte que la disponibilidad de apartamentos está bajando rápido. ¿Tienes 5 minutos? 💬`,
+  reactivacion: `✨ Hola *{{nombre}}*! Tenemos novedades en *{{proyecto}}* que podrían interesarte. ¿Te cuento? 😊`,
+  despedida: `¡Hasta pronto, *{{nombre}}*! 👋\n\nFue un placer atenderte. ¡Que tengas excelente día! 🌟`,
+};
+
+function loadMessage() {
+  const sel = document.getElementById("msg-selector").value;
+  document.getElementById("msg-content").value = MSGS_DEMO[sel] || "";
+}
+
+function saveMessage() {
+  const sel = document.getElementById("msg-selector").value;
+  MSGS_DEMO[sel] = document.getElementById("msg-content").value;
+  alert(`✅ Mensaje "${sel}" guardado correctamente.`);
+}
+
+// ── PROYECTO ──────────────────────────────────────────────────────
+function saveProyecto() {
+  alert("✅ Configuración del proyecto guardada. En producción, esto actualizaría config.js y recargaría el bot.");
+}
+
+function loadDefaults() {
+  document.getElementById("cfg-nombre").value = "Torre Mirador";
+  document.getElementById("cfg-ciudad").value = "Bogotá";
+  document.getElementById("cfg-ubicacion").value = "Calle 100 #15-20, Chapinero";
+  document.getElementById("cfg-entrega").value = "Diciembre 2026";
+  document.getElementById("cfg-link").value = "https://link-del-proyecto.com";
+  document.getElementById("cfg-maps").value = "https://maps.google.com/?q=Bogota";
+  document.getElementById("cfg-horario").value = "Lunes a Sábado 9am–6pm";
+  document.getElementById("cfg-tel").value = "+57 300 000 0000";
+  document.getElementById("cfg-desc").value = "Moderno proyecto residencial en el corazón de la ciudad.";
+  document.getElementById("cfg-amenidades").value = "Piscina\nGimnasio\nSalón social\nZona BBQ\nParqueadero cubierto\nPortería 24/7";
+}
+
+function savePrompt() {
+  alert("✅ Prompt guardado. En producción, esto actualizaría PROMPT.md y reiniciaría el módulo de IA.");
+}
+
+function copyPrompt() {
+  navigator.clipboard.writeText(document.getElementById("prompt-content").value);
+  alert("📋 Prompt copiado al portapapeles.");
+}
+
+// ── INIT ──────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  initDashboard();
+  initLeadsTable();
+  initFaqs();
+  loadMessage();
+  updateSession();
+
+  // Auto-start simulator
+  setTimeout(() => {
+    const resp = botResponde("hola");
+    addMessage(resp, "bot");
+    updateSession();
+  }, 500);
+});
+</script>
+</body>
+</html>
