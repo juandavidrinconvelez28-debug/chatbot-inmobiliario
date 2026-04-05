@@ -4,9 +4,15 @@
 // ============================================================
 
 const CONFIG = require("./config");
+const {
+  getSession,
+  upsertSession,
+} = require("./src/repositories/session.repository");
+const { upsertLead } = require("./src/repositories/lead.repository");
+const { createVisit } = require("./src/repositories/visit.repository");
 
 // ── SESIONES EN MEMORIA (reemplazar con Redis/BD en producción) ──
-const sesiones = new Map();
+//const sesiones = new Map();
 
 // ── MENSAJES PREDEFINIDOS ─────────────────────────────────────
 const MENSAJES = {
@@ -55,7 +61,7 @@ const MENSAJES = {
         `  💰 Precio: ${a.precio}\n` +
         `  🛏️ ${a.habitaciones} hab / 🚿 ${a.banos} baños\n` +
         `  ✅ Disponibles: ${a.disponibles}\n` +
-        `  ${a.descripcion}`
+        `  ${a.descripcion}`,
     );
     return (
       `💰 *PRECIOS Y DISPONIBILIDAD*\n\n` +
@@ -98,8 +104,7 @@ const MENSAJES = {
     `Perfecto, *${nombre}*! 😊\n\n` +
     `¿Cuál es tu número de teléfono o WhatsApp para confirmarte la visita?`,
 
-  solicitarCiudad: () =>
-    `¿Desde qué ciudad nos contactas?`,
+  solicitarCiudad: () => `¿Desde qué ciudad nos contactas?`,
 
   solicitarPresupuesto: () =>
     `💰 ¿Cuál es tu presupuesto aproximado para el apartamento?\n\n` +
@@ -190,16 +195,17 @@ const MENSAJES = {
 };
 
 // ── UTILIDADES ────────────────────────────────────────────────
+async function obtenerSesion(userId) {
+  const sessionDb = await getSession(userId);
 
-function obtenerSesion(userId) {
-  if (!sesiones.has(userId)) {
-    sesiones.set(userId, {
+  if (!sessionDb) {
+    const nuevaSesion = {
       userId,
       estado: CONFIG.estados.INICIO,
       etapa_captura: null,
       datos: {
         nombre: null,
-        telefono: null,
+        telefono: userId,
         ciudad: null,
         presupuesto: null,
         tipoApto: null,
@@ -213,14 +219,40 @@ function obtenerSesion(userId) {
       historial: [],
       ultimaActividad: Date.now(),
       intentosNoEntendido: 0,
-    });
+    };
+
+    await upsertSession(userId, nuevaSesion.estado, nuevaSesion);
+    return nuevaSesion;
   }
-  return sesiones.get(userId);
+
+  return (
+    sessionDb.context || {
+      userId,
+      estado: CONFIG.estados.INICIO,
+      etapa_captura: null,
+      datos: {
+        nombre: null,
+        telefono: userId,
+        ciudad: null,
+        presupuesto: null,
+        tipoApto: null,
+        propositoCompra: null,
+        formaPagoPreferida: null,
+        fechaVisita: null,
+        nivelInteres: null,
+        asesorAsignado: CONFIG.asesor.nombre,
+      },
+      etiqueta: CONFIG.etiquetas.NUEVO,
+      historial: [],
+      ultimaActividad: Date.now(),
+      intentosNoEntendido: 0,
+    }
+  );
 }
 
-function guardarSesion(sesion) {
+async function guardarSesion(sesion) {
   sesion.ultimaActividad = Date.now();
-  sesiones.set(sesion.userId, sesion);
+  await upsertSession(sesion.userId, sesion.estado, sesion);
 }
 
 function normalizarTexto(texto) {
@@ -235,17 +267,84 @@ function detectarIntencion(texto) {
   const t = normalizarTexto(texto);
 
   // Números de menú
-  if (t === "1" || t.includes("ver proyecto") || t.includes("proyecto")) return "VER_PROYECTO";
-  if (t === "2" || t.includes("ubicacion") || t.includes("donde") || t.includes("mapa")) return "UBICACION";
-  if (t === "3" || t.includes("precio") || t.includes("costo") || t.includes("valor") || t.includes("disponibilidad")) return "PRECIOS";
-  if (t === "4" || t.includes("forma de pago") || t.includes("credito") || t.includes("financiacion") || t.includes("cuota inicial")) return "FORMAS_PAGO";
-  if (t === "5" || t.includes("agendar") || t.includes("visita") || t.includes("cita")) return "AGENDAR_VISITA";
-  if (t === "6" || t.includes("asesor") || t.includes("humano") || t.includes("persona") || t.includes("hablar con")) return "TRANSFERENCIA_ASESOR";
-  if (t === "7" || t.includes("brochure") || t.includes("catalogo") || t.includes("digital") || t.includes("link") || t.includes("enlace")) return "BROCHURE";
-  if (t === "8" || t.includes("pregunta") || t.includes("faq") || t.includes("duda")) return "FAQ";
-  if (t.includes("menu") || t.includes("inicio") || t.includes("opciones") || t.includes("ayuda")) return "MENU";
-  if (t.includes("adios") || t.includes("hasta luego") || t.includes("chao") || t.includes("bye") || t.includes("gracias")) return "DESPEDIDA";
-  if (t.includes("hola") || t.includes("buenas") || t.includes("buen dia") || t.includes("buenos dias")) return "SALUDO";
+  if (t === "1" || t.includes("ver proyecto") || t.includes("proyecto"))
+    return "VER_PROYECTO";
+  if (
+    t === "2" ||
+    t.includes("ubicacion") ||
+    t.includes("donde") ||
+    t.includes("mapa")
+  )
+    return "UBICACION";
+  if (
+    t === "3" ||
+    t.includes("precio") ||
+    t.includes("costo") ||
+    t.includes("valor") ||
+    t.includes("disponibilidad")
+  )
+    return "PRECIOS";
+  if (
+    t === "4" ||
+    t.includes("forma de pago") ||
+    t.includes("credito") ||
+    t.includes("financiacion") ||
+    t.includes("cuota inicial")
+  )
+    return "FORMAS_PAGO";
+  if (
+    t === "5" ||
+    t.includes("agendar") ||
+    t.includes("visita") ||
+    t.includes("cita")
+  )
+    return "AGENDAR_VISITA";
+  if (
+    t === "6" ||
+    t.includes("asesor") ||
+    t.includes("humano") ||
+    t.includes("persona") ||
+    t.includes("hablar con")
+  )
+    return "TRANSFERENCIA_ASESOR";
+  if (
+    t === "7" ||
+    t.includes("brochure") ||
+    t.includes("catalogo") ||
+    t.includes("digital") ||
+    t.includes("link") ||
+    t.includes("enlace")
+  )
+    return "BROCHURE";
+  if (
+    t === "8" ||
+    t.includes("pregunta") ||
+    t.includes("faq") ||
+    t.includes("duda")
+  )
+    return "FAQ";
+  if (
+    t.includes("menu") ||
+    t.includes("inicio") ||
+    t.includes("opciones") ||
+    t.includes("ayuda")
+  )
+    return "MENU";
+  if (
+    t.includes("adios") ||
+    t.includes("hasta luego") ||
+    t.includes("chao") ||
+    t.includes("bye") ||
+    t.includes("gracias")
+  )
+    return "DESPEDIDA";
+  if (
+    t.includes("hola") ||
+    t.includes("buenas") ||
+    t.includes("buen dia") ||
+    t.includes("buenos dias")
+  )
+    return "SALUDO";
 
   return null;
 }
@@ -265,8 +364,12 @@ function calificarLead(datos) {
 // ── MANEJADOR PRINCIPAL ───────────────────────────────────────
 
 async function procesarMensaje(userId, mensajeEntrante) {
-  const sesion = obtenerSesion(userId);
-  sesion.historial.push({ rol: "usuario", texto: mensajeEntrante, timestamp: Date.now() });
+  const sesion = await obtenerSesion(userId);
+  sesion.historial.push({
+    rol: "usuario",
+    texto: mensajeEntrante,
+    timestamp: Date.now(),
+  });
   sesion.intentosNoEntendido = 0;
 
   let respuesta = "";
@@ -274,8 +377,12 @@ async function procesarMensaje(userId, mensajeEntrante) {
   // ── FLUJO DE CAPTURA DE DATOS (agendamiento) ──────────────
   if (sesion.estado === CONFIG.estados.CAPTURA_DATOS) {
     respuesta = await manejarCapturaDatos(sesion, mensajeEntrante);
-    guardarSesion(sesion);
-    sesion.historial.push({ rol: "bot", texto: respuesta, timestamp: Date.now() });
+    await guardarSesion(sesion);
+    sesion.historial.push({
+      rol: "bot",
+      texto: respuesta,
+      timestamp: Date.now(),
+    });
     return respuesta;
   }
 
@@ -323,7 +430,9 @@ async function procesarMensaje(userId, mensajeEntrante) {
     // Intentar responder FAQ automáticamente
     const faqResp = buscarEnFAQs(mensajeEntrante);
     if (faqResp) {
-      respuesta = faqResp + "\n\n¿Tienes alguna otra pregunta? Escribe *menú* para ver más opciones.";
+      respuesta =
+        faqResp +
+        "\n\n¿Tienes alguna otra pregunta? Escribe *menú* para ver más opciones.";
     } else {
       sesion.intentosNoEntendido++;
       if (sesion.intentosNoEntendido >= 2) {
@@ -336,8 +445,12 @@ async function procesarMensaje(userId, mensajeEntrante) {
     }
   }
 
-  guardarSesion(sesion);
-  sesion.historial.push({ rol: "bot", texto: respuesta, timestamp: Date.now() });
+  await guardarSesion(sesion);
+  sesion.historial.push({
+    rol: "bot",
+    texto: respuesta,
+    timestamp: Date.now(),
+  });
   return respuesta;
 }
 
@@ -346,7 +459,8 @@ async function manejarCapturaDatos(sesion, texto) {
   const etapa = sesion.etapa_captura;
 
   if (etapa === "nombre") {
-    if (texto.trim().length < 3) return "Por favor escribe tu nombre completo. 😊";
+    if (texto.trim().length < 3)
+      return "Por favor escribe tu nombre completo. 😊";
     sesion.datos.nombre = texto.trim();
     sesion.etapa_captura = "telefono";
     return MENSAJES.solicitarTelefono(sesion.datos.nombre);
@@ -354,7 +468,8 @@ async function manejarCapturaDatos(sesion, texto) {
 
   if (etapa === "telefono") {
     const tel = texto.replace(/\s/g, "");
-    if (!/^[\+\d]{7,15}$/.test(tel)) return "Por favor escribe un número de teléfono válido (ej: 3001234567). 📞";
+    if (!/^[\+\d]{7,15}$/.test(tel))
+      return "Por favor escribe un número de teléfono válido (ej: 3001234567). 📞";
     sesion.datos.telefono = tel;
     sesion.etapa_captura = "ciudad";
     return MENSAJES.solicitarCiudad();
@@ -367,28 +482,45 @@ async function manejarCapturaDatos(sesion, texto) {
   }
 
   if (etapa === "presupuesto") {
-    const opciones = { "1": "Hasta $200M", "2": "$200M–$350M", "3": "$350M–$500M", "4": "Más de $500M" };
+    const opciones = {
+      1: "Hasta $200M",
+      2: "$200M–$350M",
+      3: "$350M–$500M",
+      4: "Más de $500M",
+    };
     sesion.datos.presupuesto = opciones[texto.trim()] || texto.trim();
     sesion.etapa_captura = "tipoApto";
     return MENSAJES.solicitarTipoApto();
   }
 
   if (etapa === "tipoApto") {
-    const opciones = { "1": "Estudio", "2": "2 Habitaciones", "3": "3 Habitaciones", "4": "Penthouse", "5": "Por definir" };
+    const opciones = {
+      1: "Estudio",
+      2: "2 Habitaciones",
+      3: "3 Habitaciones",
+      4: "Penthouse",
+      5: "Por definir",
+    };
     sesion.datos.tipoApto = opciones[texto.trim()] || texto.trim();
     sesion.etapa_captura = "proposito";
     return MENSAJES.solicitarPropositoCompra();
   }
 
   if (etapa === "proposito") {
-    const opciones = { "1": "Vivienda", "2": "Inversión", "3": "Ambos" };
+    const opciones = { 1: "Vivienda", 2: "Inversión", 3: "Ambos" };
     sesion.datos.propositoCompra = opciones[texto.trim()] || texto.trim();
     sesion.etapa_captura = "formaPago";
     return MENSAJES.solicitarFormaPagoPreferida();
   }
 
   if (etapa === "formaPago") {
-    const opciones = { "1": "Crédito hipotecario", "2": "Cuota inicial + crédito", "3": "Contado", "4": "Subsidio", "5": "Por definir" };
+    const opciones = {
+      1: "Crédito hipotecario",
+      2: "Cuota inicial + crédito",
+      3: "Contado",
+      4: "Subsidio",
+      5: "Por definir",
+    };
     sesion.datos.formaPagoPreferida = opciones[texto.trim()] || texto.trim();
     sesion.etapa_captura = "fechaVisita";
     return MENSAJES.solicitarFechaVisita();
@@ -401,15 +533,37 @@ async function manejarCapturaDatos(sesion, texto) {
 
     // Calcular nivel de interés
     const puntos = calificarLead(sesion.datos);
-    sesion.datos.nivelInteres = puntos >= 70 ? "Alto" : puntos >= 40 ? "Medio" : "Bajo";
+    sesion.datos.nivelInteres =
+      puntos >= 70 ? "Alto" : puntos >= 40 ? "Medio" : "Bajo";
     sesion.etiqueta =
-      puntos >= 70 ? CONFIG.etiquetas.VISITA_AGENDADA : CONFIG.etiquetas.CALIFICADO;
+      puntos >= 70
+        ? CONFIG.etiquetas.VISITA_AGENDADA
+        : CONFIG.etiquetas.CALIFICADO;
 
     // Notificar asesor
     await notificarAsesor(sesion);
 
     return MENSAJES.confirmacionVisita(sesion.datos);
   }
+  await upsertLead({
+    phone: sesion.userId,
+    full_name: sesion.datos.nombre,
+    city: sesion.datos.ciudad,
+    budget: sesion.datos.presupuesto,
+    apartment_type: sesion.datos.tipoApto,
+    purchase_reason: sesion.datos.propositoCompra,
+    payment_preference: sesion.datos.formaPagoPreferida,
+    interest_level: sesion.datos.nivelInteres,
+    advisor_assigned: sesion.datos.asesorAsignado,
+  });
+
+  await createVisit({
+    lead_phone: sesion.userId,
+    visit_date: sesion.datos.fechaVisita,
+    visit_time: "Pendiente confirmar",
+    status: "pending",
+    notes: "Visita registrada desde el bot",
+  });
 
   return MENSAJES.noEntendido();
 }
@@ -424,7 +578,13 @@ function buscarEnFAQs(pregunta) {
     credito: ["credito", "banco", "financiacion", "prestamo"],
     area: ["area", "metros", "tamano", "grande"],
     entrega: ["entrega", "cuando", "listo", "terminado"],
-    amenidades: ["amenidades", "servicios", "piscina", "gimnasio", "parqueadero"],
+    amenidades: [
+      "amenidades",
+      "servicios",
+      "piscina",
+      "gimnasio",
+      "parqueadero",
+    ],
     parqueadero: ["parqueadero", "garaje", "carro", "vehiculo"],
     seguridad: ["seguridad", "vigilancia", "porteria", "camara"],
     documentos: ["documentos", "papeles", "requisitos", "separar"],
@@ -435,7 +595,7 @@ function buscarEnFAQs(pregunta) {
   for (const [clave, palabras] of Object.entries(palabrasClave)) {
     if (palabras.some((pal) => p.includes(pal))) {
       const faq = CONFIG.faqs.find((f) =>
-        normalizarTexto(f.pregunta).includes(clave.replace("_", " "))
+        normalizarTexto(f.pregunta).includes(clave.replace("_", " ")),
       );
       if (faq) return `❓ *${faq.pregunta}*\n\n${faq.respuesta}`;
     }

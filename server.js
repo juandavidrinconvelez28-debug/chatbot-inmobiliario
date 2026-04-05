@@ -10,6 +10,8 @@ const path = require("path");
 const { procesarMensaje } = require("./bot-engine");
 const CONFIG = require("./config");
 const pool = require("./src/db/pool");
+const initDb = require("./src/db/init");
+
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -23,7 +25,13 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || "";
 // ── LOGS ──────────────────────────────────────────────────────
 function log(tipo, msg, data = null) {
   const ts = new Date().toISOString();
-  const prefijos = { INFO: "ℹ️", ERROR: "❌", WARN: "⚠️", BOT: "🤖", USER: "👤" };
+  const prefijos = {
+    INFO: "ℹ️",
+    ERROR: "❌",
+    WARN: "⚠️",
+    BOT: "🤖",
+    USER: "👤",
+  };
   console.log(`[${ts}] ${prefijos[tipo] || "•"} ${msg}`);
   if (data) console.log(JSON.stringify(data, null, 2));
 }
@@ -43,17 +51,36 @@ app.get("/health/db", async (_req, res) => {
     res.json({
       ok: true,
       db: "connected",
-      now: result.rows[0].now
+      now: result.rows[0].now,
     });
   } catch (error) {
     res.status(500).json({
       ok: false,
       db: "error",
-      error: error.message
+      error: error.message,
     });
   }
 });
+app.get("/health/tables", async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+      ORDER BY table_name;
+    `);
 
+    res.json({
+      ok: true,
+      tables: result.rows.map((r) => r.table_name),
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
 // ════════════════════════════════════════════════════════════
 // MODO A: META / WHATSAPP CLOUD API
 // ════════════════════════════════════════════════════════════
@@ -90,10 +117,10 @@ app.post("/webhook", async (req, res) => {
             msg.type === "text"
               ? msg.text.body
               : msg.type === "interactive"
-              ? msg.interactive?.button_reply?.title ||
+                ? msg.interactive?.button_reply?.title ||
                 msg.interactive?.list_reply?.title ||
                 ""
-              : "";
+                : "";
 
           if (!texto) continue;
 
@@ -156,7 +183,11 @@ app.post("/message", async (req, res) => {
     const respuesta = await procesarMensaje(userId, message);
     log("BOT", `[Generic][${userId}] ← ${respuesta.substring(0, 80)}...`);
 
-    res.json({ userId, response: respuesta, timestamp: new Date().toISOString() });
+    res.json({
+      userId,
+      response: respuesta,
+      timestamp: new Date().toISOString(),
+    });
   } catch (err) {
     log("ERROR", "Error en endpoint genérico:", err.message);
     res.status(500).json({ error: "Error interno del servidor" });
@@ -171,7 +202,10 @@ app.post("/seguimientos/ejecutar", async (req, res) => {
   // En producción: llamar desde cron job cada hora
   // Ejemplo con cURL: curl -X POST http://localhost:3000/seguimientos/ejecutar
   log("INFO", "Ejecutando seguimientos automáticos...");
-  res.json({ mensaje: "Seguimientos procesados", timestamp: new Date().toISOString() });
+  res.json({
+    mensaje: "Seguimientos procesados",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ════════════════════════════════════════════════════════════
@@ -179,14 +213,16 @@ app.post("/seguimientos/ejecutar", async (req, res) => {
 // ════════════════════════════════════════════════════════════
 
 async function enviarMensajeMeta(telefono, texto) {
-  
   const url = `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`;
 
   if (!WHATSAPP_TOKEN || !PHONE_NUMBER_ID) {
-  log("WARN", "WHATSAPP_TOKEN o PHONE_NUMBER_ID no configurados. No se envió mensaje a Meta.");
-  return null;
-}
-  
+    log(
+      "WARN",
+      "WHATSAPP_TOKEN o PHONE_NUMBER_ID no configurados. No se envió mensaje a Meta.",
+    );
+    return null;
+  }
+
   const payload = {
     messaging_product: "whatsapp",
     to: telefono,
@@ -220,11 +256,29 @@ function escapeXml(text) {
 }
 
 // ── INICIAR SERVIDOR ──────────────────────────────────────────
-app.listen(PORT, "0.0.0.0", () => {
-  log("INFO", `🚀 Servidor del Chatbot ${CONFIG.proyecto.nombre} corriendo en puerto ${PORT}`);
-  log("INFO", `📡 Webhook Meta: POST http://localhost:${PORT}/webhook`);
-  log("INFO", `📡 Webhook Twilio: POST http://localhost:${PORT}/twilio/webhook`);
-  log("INFO", `📡 Endpoint genérico: POST http://localhost:${PORT}/message`);
-});
+async function startServer() {
+  try {
+    await initDb();
+
+    app.listen(PORT, "0.0.0.0", () => {
+      log(
+        "INFO",
+        `🚀 Servidor del Chatbot ${CONFIG.proyecto.nombre} corriendo en puerto ${PORT}`,
+      );
+      log("INFO", `📡 Webhook Meta: POST /webhook`);
+      log("INFO", `📡 Webhook Twilio: POST /twilio/webhook`);
+      log("INFO", `📡 Endpoint genérico: POST /message`);
+    });
+  } catch (error) {
+    log(
+      "ERROR",
+      "No se pudo iniciar el servidor por error de base de datos:",
+      error.message,
+    );
+    process.exit(1);
+  }
+}
+
+startServer();
 
 module.exports = app;
