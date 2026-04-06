@@ -1,9 +1,10 @@
+"use strict";
 // ============================================================
 // BOT-ENGINE.JS — Motor principal del Chatbot Inmobiliario
-// Maneja todos los flujos, estados y respuestas del bot
 // ============================================================
 
 const CONFIG = require("./config");
+const fetch = require("node-fetch");
 const {
   getSession,
   upsertSession,
@@ -11,10 +12,22 @@ const {
 const { upsertLead } = require("./src/repositories/lead.repository");
 const { createVisit } = require("./src/repositories/visit.repository");
 
-// ── SESIONES EN MEMORIA (reemplazar con Redis/BD en producción) ──
-//const sesiones = new Map();
+// ── LOGGER ────────────────────────────────────────────────────
+const logger = {
+  info:  (msg, data) => _log("INFO",  msg, data),
+  error: (msg, data) => _log("ERROR", msg, data),
+  warn:  (msg, data) => _log("WARN",  msg, data),
+  bot:   (msg, data) => _log("BOT",   msg, data),
+};
 
-// ── MENSAJES PREDEFINIDOS ─────────────────────────────────────
+function _log(level, msg, data) {
+  const ts = new Date().toISOString();
+  const icons = { INFO: "ℹ️", ERROR: "❌", WARN: "⚠️", BOT: "🤖" };
+  process.stdout.write(`[${ts}] ${icons[level] || "•"} ${msg}\n`);
+  if (data) process.stdout.write(JSON.stringify(data, null, 2) + "\n");
+}
+
+// ── MENSAJES ──────────────────────────────────────────────────
 const MENSAJES = {
   bienvenida: () =>
     `🏠 *¡Bienvenido a ${CONFIG.proyecto.nombre}!*\n\n` +
@@ -61,7 +74,7 @@ const MENSAJES = {
         `  💰 Precio: ${a.precio}\n` +
         `  🛏️ ${a.habitaciones} hab / 🚿 ${a.banos} baños\n` +
         `  ✅ Disponibles: ${a.disponibles}\n` +
-        `  ${a.descripcion}`,
+        `  ${a.descripcion}`
     );
     return (
       `💰 *PRECIOS Y DISPONIBILIDAD*\n\n` +
@@ -100,13 +113,8 @@ const MENSAJES = {
     `🕐 *Horario de visitas:*\n${CONFIG.proyecto.horarioVisitas}\n\n` +
     `Para agendarte necesito algunos datos. ¿Me dices tu nombre completo? 😊`,
 
-  solicitarTelefono: (nombre) =>
-    `Perfecto, *${nombre}*! 😊\n\n` +
-    `¿Cuál es tu número de teléfono o WhatsApp para confirmarte la visita?`,
-
-  solicitarCiudad: () => `¿Desde qué ciudad nos contactas?`,
-
-  solicitarPresupuesto: () =>
+  solicitarCiudad:         () => `¿Desde qué ciudad nos contactas?`,
+  solicitarPresupuesto:    () =>
     `💰 ¿Cuál es tu presupuesto aproximado para el apartamento?\n\n` +
     `1️⃣  Hasta $200 millones\n` +
     `2️⃣  $200M – $350M\n` +
@@ -172,14 +180,8 @@ const MENSAJES = {
     `✨ Hola *${nombre || ""}*! ¿Cómo estás?\n\n` +
     `Tenemos *novedades importantes* en *${CONFIG.proyecto.nombre}* que podrían interesarte:\n\n` +
     `🎁 Condiciones especiales de pago este mes\n` +
-    `🏗️ Avance de obra al ${Math.floor(Math.random() * 20 + 60)}%\n` +
     `⚡ Últimas unidades disponibles\n\n` +
     `¿Te gustaría que te contara más? 😊`,
-
-  postVisita: (nombre) =>
-    `🌟 ¡Hola *${nombre || ""}*! ¿Cómo estás?\n\n` +
-    `Espero que tu visita a *${CONFIG.proyecto.nombre}* haya sido de tu agrado. 🏠\n\n` +
-    `¿Qué te pareció el proyecto? ¿Tienes alguna duda o quieres avanzar con tu apartamento? Aquí estoy para ayudarte.`,
 
   noEntendido: () =>
     `😊 No entendí bien tu mensaje. Escribe el número de la opción que te interesa o hazme tu pregunta directamente.\n\n` +
@@ -189,205 +191,262 @@ const MENSAJES = {
     `¡Hasta pronto, *${nombre || ""}*! 👋\n\n` +
     `Fue un placer atenderte. Recuerda que estamos disponibles para cualquier consulta sobre *${CONFIG.proyecto.nombre}*.\n\n` +
     `¡Que tengas un excelente día! 🌟`,
-
-  timeout: () =>
-    `⏰ ¿Sigues ahí? Estoy aquí para ayudarte con cualquier pregunta sobre nuestros apartamentos. Escribe *menú* para continuar o *adiós* para terminar.`,
 };
 
-// ── UTILIDADES ────────────────────────────────────────────────
+// ── DETECCIÓN DE INTENCIÓN ────────────────────────────────────
+const INTENCIONES = [
+  {
+    nombre: "SALUDO",
+    patrones: [
+      /^(hola|buenos|buenas|buen\s*d[íi]a|hi|hey|saludos|qu[eé]\s*tal|qu[eé]\s*hubo)/i,
+    ],
+  },
+  {
+    nombre: "MENU",
+    patrones: [/^(men[uú]|inicio|volver|regresar|opciones|ayuda|help|\*)$/i],
+  },
+  {
+    nombre: "VER_PROYECTO",
+    patrones: [
+      /^1$/, /proyecto|residencial|apartamento|apto|conjunto/i,
+    ],
+  },
+  {
+    nombre: "UBICACION",
+    patrones: [
+      /^2$/, /ubicaci[oó]n|d[oó]nde|direcci[oó]n|maps|mapa|zona|barrio|sector/i,
+    ],
+  },
+  {
+    nombre: "PRECIOS",
+    patrones: [
+      /^3$/, /precio|valor|costo|cu[aá]nto|costo|disponib/i,
+    ],
+  },
+  {
+    nombre: "FORMAS_PAGO",
+    patrones: [
+      /^4$/, /pago|financiaci[oó]n|cr[eé]dito|cuota|subsidio|financiar|banco/i,
+    ],
+  },
+  {
+    nombre: "AGENDAR_VISITA",
+    patrones: [
+      /^5$/, /visit|agenda|cita|conocer|ir\s*a\s*ver|cuando\s*puedo|horario/i,
+    ],
+  },
+  {
+    nombre: "TRANSFERENCIA_ASESOR",
+    patrones: [
+      /^6$/, /asesor|humano|persona|ejecutivo|vendedor|hablar\s*con|contactar/i,
+    ],
+  },
+  {
+    nombre: "BROCHURE",
+    patrones: [
+      /^7$/, /brochure|cat[aá]logo|pdf|digital|recorrido|virtual|fotos|renders/i,
+    ],
+  },
+  {
+    nombre: "FAQ",
+    patrones: [
+      /^8$/, /preguntas?\s*frecuentes|faq|m[aá]s\s*info/i,
+    ],
+  },
+  {
+    nombre: "DESPEDIDA",
+    patrones: [
+      /^(adi[oó]s|hasta\s*luego|chao|bye|gracias\s*y?\s*adi[oó]s|nos\s*vemos)$/i,
+    ],
+  },
+];
+
+function detectarIntencion(texto) {
+  const t = texto.trim();
+  for (const { nombre, patrones } of INTENCIONES) {
+    if (patrones.some((p) => p.test(t))) return nombre;
+  }
+  return null;
+}
+
+// ── BÚSQUEDA EN FAQs ──────────────────────────────────────────
+function buscarEnFAQs(texto) {
+  const t = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  for (const faq of CONFIG.faqs) {
+    const pregunta = faq.pregunta
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    const palabras = pregunta.split(/\s+/).filter((p) => p.length > 3);
+    const coincidencias = palabras.filter((p) => t.includes(p)).length;
+    if (coincidencias >= Math.min(2, palabras.length)) {
+      return faq.respuesta;
+    }
+  }
+  return null;
+}
+
+function generarFAQRapida(texto) {
+  const resp = buscarEnFAQs(texto);
+  if (resp) return resp + "\n\n¿Tienes alguna otra pregunta? Escribe *menú* para ver más opciones.";
+  return (
+    `❓ *PREGUNTAS FRECUENTES*\n\n` +
+    CONFIG.faqs
+      .slice(0, 5)
+      .map((f, i) => `${i + 1}. ${f.pregunta}`)
+      .join("\n") +
+    `\n\nEscribe tu pregunta y te respondo. 😊`
+  );
+}
+
+// ── CALIFICACIÓN DE LEAD ──────────────────────────────────────
+function calificarLead(datos) {
+  let puntos = 0;
+  if (datos.nombre)              puntos += 10;
+  if (datos.ciudad)              puntos += 10;
+  if (datos.presupuesto && !datos.presupuesto.includes("200M"))
+                                 puntos += 20;
+  else if (datos.presupuesto)    puntos += 10;
+  if (datos.tipoApto && datos.tipoApto !== "Por definir")
+                                 puntos += 15;
+  if (datos.propositoCompra)     puntos += 10;
+  if (datos.formaPagoPreferida && datos.formaPagoPreferida !== "Por definir")
+                                 puntos += 15;
+  if (datos.fechaVisita)         puntos += 20;
+  return Math.min(puntos, 100);
+}
+
+// ── NOTIFICACIÓN AL ASESOR ────────────────────────────────────
+async function notificarAsesor(sesion) {
+  const webhookUrl = process.env.ADVISOR_WEBHOOK_URL;
+  if (!webhookUrl) return;
+
+  const payload = {
+    evento: "nuevo_lead",
+    timestamp: new Date().toISOString(),
+    proyecto: CONFIG.proyecto.nombre,
+    lead: {
+      telefono: sesion.userId,
+      nombre: sesion.datos.nombre || "Sin nombre",
+      ciudad: sesion.datos.ciudad || "Sin ciudad",
+      presupuesto: sesion.datos.presupuesto || "No indicado",
+      tipoApto: sesion.datos.tipoApto || "No indicado",
+      proposito: sesion.datos.propositoCompra || "No indicado",
+      formaPago: sesion.datos.formaPagoPreferida || "No indicado",
+      fechaVisita: sesion.datos.fechaVisita || "Sin fecha",
+      nivelInteres: sesion.datos.nivelInteres || "Por calificar",
+    },
+  };
+
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    logger.warn("No se pudo notificar al asesor vía webhook.", err.message);
+  }
+}
+
+// ── GESTIÓN DE SESIONES ───────────────────────────────────────
+function sesionVacia(userId) {
+  return {
+    userId,
+    estado: CONFIG.estados.INICIO,
+    etapa_captura: null,
+    datos: {
+      nombre: null,
+      telefono: userId,
+      ciudad: null,
+      presupuesto: null,
+      tipoApto: null,
+      propositoCompra: null,
+      formaPagoPreferida: null,
+      fechaVisita: null,
+      nivelInteres: null,
+      asesorAsignado: CONFIG.asesor.nombre,
+    },
+    etiqueta: CONFIG.etiquetas.NUEVO,
+    historial: [],
+    ultimaActividad: Date.now(),
+    intentosNoEntendido: 0,
+    seguimientos: {
+      seguimiento1Enviado: false,
+      seguimiento2Enviado: false,
+      reactivacionEnviada: false,
+    },
+  };
+}
+
 async function obtenerSesion(userId) {
   const sessionDb = await getSession(userId);
 
   if (!sessionDb) {
-    const nuevaSesion = {
-      userId,
-      estado: CONFIG.estados.INICIO,
-      etapa_captura: null,
-      datos: {
-        nombre: null,
-        telefono: userId,
-        ciudad: null,
-        presupuesto: null,
-        tipoApto: null,
-        propositoCompra: null,
-        formaPagoPreferida: null,
-        fechaVisita: null,
-        nivelInteres: null,
-        asesorAsignado: CONFIG.asesor.nombre,
-      },
-      etiqueta: CONFIG.etiquetas.NUEVO,
-      historial: [],
-      ultimaActividad: Date.now(),
-      intentosNoEntendido: 0,
-    };
-
-    await upsertSession(userId, nuevaSesion.estado, nuevaSesion);
-    return nuevaSesion;
+    const nueva = sesionVacia(userId);
+    await upsertSession(userId, nueva.estado, nueva);
+    return nueva;
   }
 
-  return (
-    sessionDb.context || {
-      userId,
-      estado: CONFIG.estados.INICIO,
-      etapa_captura: null,
-      datos: {
-        nombre: null,
-        telefono: userId,
-        ciudad: null,
-        presupuesto: null,
-        tipoApto: null,
-        propositoCompra: null,
-        formaPagoPreferida: null,
-        fechaVisita: null,
-        nivelInteres: null,
-        asesorAsignado: CONFIG.asesor.nombre,
-      },
-      etiqueta: CONFIG.etiquetas.NUEVO,
-      historial: [],
-      ultimaActividad: Date.now(),
-      intentosNoEntendido: 0,
-    }
-  );
+  const ctx = sessionDb.context || {};
+  return {
+    userId,
+    estado: ctx.estado || CONFIG.estados.INICIO,
+    etapa_captura: ctx.etapa_captura || null,
+    datos: {
+      nombre:              ctx.datos?.nombre              || null,
+      telefono:            ctx.datos?.telefono            || userId,
+      ciudad:              ctx.datos?.ciudad              || null,
+      presupuesto:         ctx.datos?.presupuesto         || null,
+      tipoApto:            ctx.datos?.tipoApto            || null,
+      propositoCompra:     ctx.datos?.propositoCompra     || null,
+      formaPagoPreferida:  ctx.datos?.formaPagoPreferida  || null,
+      fechaVisita:         ctx.datos?.fechaVisita         || null,
+      nivelInteres:        ctx.datos?.nivelInteres        || null,
+      asesorAsignado:      ctx.datos?.asesorAsignado      || CONFIG.asesor.nombre,
+    },
+    etiqueta:             ctx.etiqueta              || CONFIG.etiquetas.NUEVO,
+    historial:            Array.isArray(ctx.historial) ? ctx.historial : [],
+    ultimaActividad:      ctx.ultimaActividad       || Date.now(),
+    intentosNoEntendido:  ctx.intentosNoEntendido   || 0,
+    seguimientos: {
+      seguimiento1Enviado: ctx.seguimientos?.seguimiento1Enviado || false,
+      seguimiento2Enviado: ctx.seguimientos?.seguimiento2Enviado || false,
+      reactivacionEnviada: ctx.seguimientos?.reactivacionEnviada || false,
+    },
+  };
 }
 
 async function guardarSesion(sesion) {
   sesion.ultimaActividad = Date.now();
+  // Limitar el historial a los últimos 50 mensajes para no inflar el JSON
+  if (sesion.historial.length > 50) {
+    sesion.historial = sesion.historial.slice(-50);
+  }
   await upsertSession(sesion.userId, sesion.estado, sesion);
 }
 
-function normalizarTexto(texto) {
-  return texto
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
-}
-
-function detectarIntencion(texto) {
-  const t = normalizarTexto(texto);
-
-  // Números de menú
-  if (t === "1" || t.includes("ver proyecto") || t.includes("proyecto"))
-    return "VER_PROYECTO";
-  if (
-    t === "2" ||
-    t.includes("ubicacion") ||
-    t.includes("donde") ||
-    t.includes("mapa")
-  )
-    return "UBICACION";
-  if (
-    t === "3" ||
-    t.includes("precio") ||
-    t.includes("costo") ||
-    t.includes("valor") ||
-    t.includes("disponibilidad")
-  )
-    return "PRECIOS";
-  if (
-    t === "4" ||
-    t.includes("forma de pago") ||
-    t.includes("credito") ||
-    t.includes("financiacion") ||
-    t.includes("cuota inicial")
-  )
-    return "FORMAS_PAGO";
-  if (
-    t === "5" ||
-    t.includes("agendar") ||
-    t.includes("visita") ||
-    t.includes("cita")
-  )
-    return "AGENDAR_VISITA";
-  if (
-    t === "6" ||
-    t.includes("asesor") ||
-    t.includes("humano") ||
-    t.includes("persona") ||
-    t.includes("hablar con")
-  )
-    return "TRANSFERENCIA_ASESOR";
-  if (
-    t === "7" ||
-    t.includes("brochure") ||
-    t.includes("catalogo") ||
-    t.includes("digital") ||
-    t.includes("link") ||
-    t.includes("enlace")
-  )
-    return "BROCHURE";
-  if (
-    t === "8" ||
-    t.includes("pregunta") ||
-    t.includes("faq") ||
-    t.includes("duda")
-  )
-    return "FAQ";
-  if (
-    t.includes("menu") ||
-    t.includes("inicio") ||
-    t.includes("opciones") ||
-    t.includes("ayuda")
-  )
-    return "MENU";
-  if (
-    t.includes("adios") ||
-    t.includes("hasta luego") ||
-    t.includes("chao") ||
-    t.includes("bye") ||
-    t.includes("gracias")
-  )
-    return "DESPEDIDA";
-  if (
-    t.includes("hola") ||
-    t.includes("buenas") ||
-    t.includes("buen dia") ||
-    t.includes("buenos dias")
-  )
-    return "SALUDO";
-
-  return null;
-}
-
-function calificarLead(datos) {
-  let puntos = 0;
-  if (datos.nombre) puntos += 10;
-  if (datos.telefono) puntos += 20;
-  if (datos.presupuesto) puntos += 15;
-  if (datos.tipoApto) puntos += 10;
-  if (datos.propositoCompra) puntos += 10;
-  if (datos.formaPagoPreferida) puntos += 10;
-  if (datos.fechaVisita) puntos += 25;
-  return puntos; // 0–100
-}
-
-// ── MANEJADOR PRINCIPAL ───────────────────────────────────────
-
+// ── FLUJO PRINCIPAL ───────────────────────────────────────────
 async function procesarMensaje(userId, mensajeEntrante) {
   const sesion = await obtenerSesion(userId);
+
   sesion.historial.push({
     rol: "usuario",
     texto: mensajeEntrante,
     timestamp: Date.now(),
   });
-  sesion.intentosNoEntendido = 0;
 
   let respuesta = "";
 
-  // ── FLUJO DE CAPTURA DE DATOS (agendamiento) ──────────────
   if (sesion.estado === CONFIG.estados.CAPTURA_DATOS) {
     respuesta = await manejarCapturaDatos(sesion, mensajeEntrante);
+    sesion.historial.push({ rol: "bot", texto: respuesta, timestamp: Date.now() });
     await guardarSesion(sesion);
-    sesion.historial.push({
-      rol: "bot",
-      texto: respuesta,
-      timestamp: Date.now(),
-    });
     return respuesta;
   }
 
-  // ── DETECCIÓN DE INTENCIÓN ────────────────────────────────
   const intencion = detectarIntencion(mensajeEntrante);
+  if (intencion) sesion.intentosNoEntendido = 0;
 
   if (intencion === "SALUDO" || sesion.estado === CONFIG.estados.INICIO) {
     respuesta = MENSAJES.bienvenida() + "\n\n" + MENSAJES.menuPrincipal();
@@ -427,88 +486,61 @@ async function procesarMensaje(userId, mensajeEntrante) {
     respuesta = MENSAJES.despedida(sesion.datos.nombre);
     sesion.estado = CONFIG.estados.CIERRE;
   } else {
-    // Intentar responder FAQ automáticamente
     const faqResp = buscarEnFAQs(mensajeEntrante);
     if (faqResp) {
-      respuesta =
-        faqResp +
-        "\n\n¿Tienes alguna otra pregunta? Escribe *menú* para ver más opciones.";
+      respuesta = faqResp + "\n\n¿Tienes alguna otra pregunta? Escribe *menú* para ver más opciones.";
+      sesion.intentosNoEntendido = 0;
     } else {
-      sesion.intentosNoEntendido++;
-      if (sesion.intentosNoEntendido >= 2) {
-        respuesta =
-          MENSAJES.noEntendido() +
-          "\n\n¿Prefieres que te conecte con un asesor? Escribe *6* para hablar con alguien de nuestro equipo. 😊";
-      } else {
-        respuesta = MENSAJES.noEntendido();
-      }
+      sesion.intentosNoEntendido += 1;
+      respuesta =
+        sesion.intentosNoEntendido >= 2
+          ? MENSAJES.noEntendido() +
+            "\n\n¿Prefieres que te conecte con un asesor? Escribe *6* para hablar con alguien de nuestro equipo. 😊"
+          : MENSAJES.noEntendido();
     }
   }
 
+  sesion.historial.push({ rol: "bot", texto: respuesta, timestamp: Date.now() });
   await guardarSesion(sesion);
-  sesion.historial.push({
-    rol: "bot",
-    texto: respuesta,
-    timestamp: Date.now(),
-  });
   return respuesta;
 }
 
-// ── FLUJO DE CAPTURA DE DATOS ─────────────────────────────────
+// ── CAPTURA DE DATOS (funnel de agendamiento) ─────────────────
 async function manejarCapturaDatos(sesion, texto) {
   const etapa = sesion.etapa_captura;
+  const valor = texto.trim();
 
   if (etapa === "nombre") {
-    if (texto.trim().length < 3)
-      return "Por favor escribe tu nombre completo. 😊";
-    sesion.datos.nombre = texto.trim();
-    sesion.etapa_captura = "telefono";
-    return MENSAJES.solicitarTelefono(sesion.datos.nombre);
-  }
-
-  if (etapa === "telefono") {
-    const tel = texto.replace(/\s/g, "");
-    if (!/^[\+\d]{7,15}$/.test(tel))
-      return "Por favor escribe un número de teléfono válido (ej: 3001234567). 📞";
-    sesion.datos.telefono = tel;
+    if (valor.length < 3) return "Por favor, escribe tu nombre completo.";
+    sesion.datos.nombre = valor;
     sesion.etapa_captura = "ciudad";
     return MENSAJES.solicitarCiudad();
   }
 
   if (etapa === "ciudad") {
-    sesion.datos.ciudad = texto.trim();
+    if (valor.length < 2) return "Por favor, indica tu ciudad.";
+    sesion.datos.ciudad = valor;
     sesion.etapa_captura = "presupuesto";
     return MENSAJES.solicitarPresupuesto();
   }
 
   if (etapa === "presupuesto") {
-    const opciones = {
-      1: "Hasta $200M",
-      2: "$200M–$350M",
-      3: "$350M–$500M",
-      4: "Más de $500M",
-    };
-    sesion.datos.presupuesto = opciones[texto.trim()] || texto.trim();
+    const opciones = { 1: "Hasta $200M", 2: "$200M–$350M", 3: "$350M–$500M", 4: "Más de $500M" };
+    sesion.datos.presupuesto = opciones[valor] || valor;
     sesion.etapa_captura = "tipoApto";
     return MENSAJES.solicitarTipoApto();
   }
 
   if (etapa === "tipoApto") {
-    const opciones = {
-      1: "Estudio",
-      2: "2 Habitaciones",
-      3: "3 Habitaciones",
-      4: "Penthouse",
-      5: "Por definir",
-    };
-    sesion.datos.tipoApto = opciones[texto.trim()] || texto.trim();
+    const opciones = { 1: "Estudio", 2: "2 Habitaciones", 3: "3 Habitaciones", 4: "Penthouse", 5: "Por definir" };
+    sesion.datos.tipoApto = opciones[valor] || valor;
     sesion.etapa_captura = "proposito";
     return MENSAJES.solicitarPropositoCompra();
   }
 
   if (etapa === "proposito") {
     const opciones = { 1: "Vivienda", 2: "Inversión", 3: "Ambos" };
-    sesion.datos.propositoCompra = opciones[texto.trim()] || texto.trim();
+    sesion.datos.propositoCompra = opciones[valor] || valor;
     sesion.etapa_captura = "formaPago";
     return MENSAJES.solicitarFormaPagoPreferida();
   }
@@ -521,152 +553,116 @@ async function manejarCapturaDatos(sesion, texto) {
       4: "Subsidio",
       5: "Por definir",
     };
-    sesion.datos.formaPagoPreferida = opciones[texto.trim()] || texto.trim();
+    sesion.datos.formaPagoPreferida = opciones[valor] || valor;
     sesion.etapa_captura = "fechaVisita";
     return MENSAJES.solicitarFechaVisita();
   }
 
   if (etapa === "fechaVisita") {
-    sesion.datos.fechaVisita = texto.trim();
+    sesion.datos.fechaVisita = valor;
     sesion.etapa_captura = null;
     sesion.estado = CONFIG.estados.AGENDAR_VISITA;
 
-    // Calcular nivel de interés
     const puntos = calificarLead(sesion.datos);
     sesion.datos.nivelInteres =
       puntos >= 70 ? "Alto" : puntos >= 40 ? "Medio" : "Bajo";
     sesion.etiqueta =
-      puntos >= 70
-        ? CONFIG.etiquetas.VISITA_AGENDADA
-        : CONFIG.etiquetas.CALIFICADO;
+      puntos >= 70 ? CONFIG.etiquetas.VISITA_AGENDADA : CONFIG.etiquetas.CALIFICADO;
 
-    // Notificar asesor
-    await notificarAsesor(sesion);
+    try {
+      await upsertLead({
+        phone:               sesion.userId,
+        full_name:           sesion.datos.nombre,
+        city:                sesion.datos.ciudad,
+        budget:              sesion.datos.presupuesto,
+        apartment_type:      sesion.datos.tipoApto,
+        purchase_reason:     sesion.datos.propositoCompra,
+        payment_preference:  sesion.datos.formaPagoPreferida,
+        interest_level:      sesion.datos.nivelInteres,
+        advisor_assigned:    sesion.datos.asesorAsignado || null,
+      });
+
+      await createVisit({
+        lead_phone:  sesion.userId,
+        visit_date:  sesion.datos.fechaVisita,
+        visit_time:  "Pendiente confirmar",
+        status:      "pending",
+        notes:       "Visita registrada desde el bot",
+      });
+
+      await notificarAsesor(sesion);
+    } catch (error) {
+      logger.error("Error guardando lead/visita:", error.message);
+    }
 
     return MENSAJES.confirmacionVisita(sesion.datos);
   }
-  await upsertLead({
-    phone: sesion.userId,
-    full_name: sesion.datos.nombre,
-    city: sesion.datos.ciudad,
-    budget: sesion.datos.presupuesto,
-    apartment_type: sesion.datos.tipoApto,
-    purchase_reason: sesion.datos.propositoCompra,
-    payment_preference: sesion.datos.formaPagoPreferida,
-    interest_level: sesion.datos.nivelInteres,
-    advisor_assigned: sesion.datos.asesorAsignado,
-  });
-
-  await createVisit({
-    lead_phone: sesion.userId,
-    visit_date: sesion.datos.fechaVisita,
-    visit_time: "Pendiente confirmar",
-    status: "pending",
-    notes: "Visita registrada desde el bot",
-  });
 
   return MENSAJES.noEntendido();
 }
 
-// ── FAQ AUTOMÁTICO ────────────────────────────────────────────
-function buscarEnFAQs(pregunta) {
-  const p = normalizarTexto(pregunta);
-  const palabrasClave = {
-    ubicacion: ["donde", "ubicacion", "lugar", "mapa", "como llegar"],
-    precio: ["precio", "costo", "valor", "cuanto cuesta"],
-    cuota_inicial: ["cuota inicial", "separacion", "adelanto"],
-    credito: ["credito", "banco", "financiacion", "prestamo"],
-    area: ["area", "metros", "tamano", "grande"],
-    entrega: ["entrega", "cuando", "listo", "terminado"],
-    amenidades: [
-      "amenidades",
-      "servicios",
-      "piscina",
-      "gimnasio",
-      "parqueadero",
-    ],
-    parqueadero: ["parqueadero", "garaje", "carro", "vehiculo"],
-    seguridad: ["seguridad", "vigilancia", "porteria", "camara"],
-    documentos: ["documentos", "papeles", "requisitos", "separar"],
-    subsidio: ["subsidio", "mi casa ya", "caja", "beneficio"],
-    inversion: ["inversion", "invertir", "arriendo", "rentabilidad"],
-  };
+// ── SEGUIMIENTOS AUTOMÁTICOS ──────────────────────────────────
+const pool = require("./src/db/pool");
 
-  for (const [clave, palabras] of Object.entries(palabrasClave)) {
-    if (palabras.some((pal) => p.includes(pal))) {
-      const faq = CONFIG.faqs.find((f) =>
-        normalizarTexto(f.pregunta).includes(clave.replace("_", " ")),
-      );
-      if (faq) return `❓ *${faq.pregunta}*\n\n${faq.respuesta}`;
+async function procesarSeguimiento(sendMessageFn = null) {
+  let procesados = 0;
+  let enviados = 0;
+  const telefonos = [];
+
+  const { rows } = await pool.query(`
+    SELECT phone, state, context_json, updated_at
+    FROM sessions
+    WHERE state <> $1
+    ORDER BY updated_at ASC
+    LIMIT 500
+  `, [CONFIG.estados.CIERRE]);
+
+  for (const row of rows) {
+    const sesion = await obtenerSesion(row.phone);
+    procesados += 1;
+
+    const ahora = Date.now();
+    const ultimaActividad = row.updated_at
+      ? new Date(row.updated_at).getTime()
+      : ahora;
+    const inactivoMs = ahora - ultimaActividad;
+
+    let mensaje = null;
+
+    if (inactivoMs >= CONFIG.timeouts.seguimiento3 && !sesion.seguimientos.reactivacionEnviada) {
+      mensaje = MENSAJES.reactivacion(sesion.datos.nombre);
+      sesion.seguimientos.reactivacionEnviada = true;
+    } else if (inactivoMs >= CONFIG.timeouts.seguimiento2 && !sesion.seguimientos.seguimiento2Enviado) {
+      mensaje = MENSAJES.seguimiento2(sesion.datos.nombre);
+      sesion.seguimientos.seguimiento2Enviado = true;
+    } else if (inactivoMs >= CONFIG.timeouts.seguimiento1 && !sesion.seguimientos.seguimiento1Enviado) {
+      mensaje = MENSAJES.seguimiento1(sesion.datos.nombre);
+      sesion.seguimientos.seguimiento1Enviado = true;
     }
+
+    if (!mensaje) continue;
+
+    sesion.historial.push({ rol: "bot", texto: mensaje, timestamp: Date.now() });
+    await guardarSesion(sesion);
+
+    if (typeof sendMessageFn === "function") {
+      try {
+        await sendMessageFn(sesion.userId, mensaje);
+      } catch (err) {
+        logger.error(`Error enviando seguimiento a ${sesion.userId}:`, err.message);
+      }
+    }
+
+    enviados += 1;
+    telefonos.push(sesion.userId);
   }
-  return null;
-}
 
-function generarFAQRapida(pregunta) {
-  const resp = buscarEnFAQs(pregunta);
-  if (resp) return resp;
-  return (
-    `❓ *PREGUNTAS FRECUENTES*\n\n` +
-    CONFIG.faqs
-      .slice(0, 5)
-      .map((f, i) => `${i + 1}. ${f.pregunta}`)
-      .join("\n") +
-    `\n\nEscribe tu pregunta y te respondo al instante. O escribe *6* para hablar con un asesor.`
-  );
-}
-
-// ── NOTIFICACIÓN A ASESOR ─────────────────────────────────────
-async function notificarAsesor(sesion) {
-  const datos = sesion.datos;
-  const puntos = calificarLead(datos);
-  const notif = {
-    tipo: "NUEVO_LEAD_CALIFICADO",
-    timestamp: new Date().toISOString(),
-    lead: {
-      nombre: datos.nombre,
-      telefono: datos.telefono,
-      ciudad: datos.ciudad,
-      presupuesto: datos.presupuesto,
-      tipoApto: datos.tipoApto,
-      proposito: datos.propositoCompra,
-      formaPago: datos.formaPagoPreferida,
-      fechaVisita: datos.fechaVisita,
-      nivelInteres: datos.nivelInteres || (puntos >= 70 ? "Alto" : "Medio"),
-      etiqueta: sesion.etiqueta,
-      puntuacion: puntos,
-    },
-    asesorAsignado: CONFIG.asesor.nombre,
-  };
-  // En producción: enviar webhook, email, Slack, CRM, etc.
-  console.log("\n📢 NOTIFICACIÓN A ASESOR:");
-  console.log(JSON.stringify(notif, null, 2));
-  return notif;
-}
-
-// ── SEGUIMIENTO AUTOMÁTICO ────────────────────────────────────
-function procesarSeguimiento(userId) {
-  const sesion = sesiones.get(userId);
-  if (!sesion) return null;
-
-  const tiempoSinActividad = Date.now() - sesion.ultimaActividad;
-
-  if (tiempoSinActividad > CONFIG.timeouts.seguimiento2) {
-    return MENSAJES.reactivacion(sesion.datos.nombre);
-  } else if (tiempoSinActividad > CONFIG.timeouts.seguimiento1) {
-    return MENSAJES.seguimiento2(sesion.datos.nombre);
-  } else if (tiempoSinActividad > CONFIG.timeouts.respuesta) {
-    return MENSAJES.seguimiento1(sesion.datos.nombre);
-  }
-  return null;
+  return { procesados, enviados, telefonos };
 }
 
 module.exports = {
   procesarMensaje,
   procesarSeguimiento,
   obtenerSesion,
-  MENSAJES,
-  CONFIG,
-  calificarLead,
-  notificarAsesor,
+  sesionVacia,
 };

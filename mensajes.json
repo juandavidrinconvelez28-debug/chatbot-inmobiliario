@@ -1,0 +1,14 @@
+{
+  "bienvenida": "🏠 ¡Bienvenido a {{proyecto}}! Soy Valeria, tu asesora virtual en {{ciudad}}. ¿En qué puedo ayudarte hoy?",
+  "menu": "📋 MENÚ PRINCIPAL\n\n1️⃣ Ver el proyecto\n2️⃣ Ubicación\n3️⃣ Precios y disponibilidad\n4️⃣ Formas de pago\n5️⃣ Agendar visita\n6️⃣ Hablar con un asesor\n7️⃣ Ver brochure\n8️⃣ Preguntas frecuentes",
+  "ubicacion": "📍 Estamos en {{ubicacion}}.\n\n🔗 Ver en mapa: {{linkMaps}}\n\n¿Quieres agendar una visita? Escribe 5.",
+  "formas_pago": "💳 Formas de pago disponibles:\n- Cuota inicial\n- Crédito hipotecario\n- Contado\n- Subsidios",
+  "brochure": "📄 Aquí tienes el proyecto digital: {{linkProyecto}}\n📋 Brochure: {{linkBrochure}}",
+  "agendamiento": "📅 Perfecto. ¿Me dices tu nombre completo?",
+  "confirmacion": "✅ ¡Visita confirmada!\n\n{{nombre}}, quedaste agendado para {{fechaVisita}} en {{ubicacion}}.",
+  "transferencia": "👤 En un momento un asesor estará contigo.\n📞 {{telefono}}",
+  "seguimiento1": "👋 Hola {{nombre}}, ¿pudiste revisar la información del proyecto?",
+  "seguimiento2": "🏠 Hola {{nombre}}, aún tenemos disponibilidad. ¿Quieres que te ayude a agendar visita?",
+  "reactivacion": "✨ Hola {{nombre}}, tenemos novedades en {{proyecto}}. ¿Te las comparto?",
+  "despedida": "👋 Gracias por escribirnos. Quedo atento si quieres más información."
+}
